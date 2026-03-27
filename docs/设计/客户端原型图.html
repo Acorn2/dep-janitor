@@ -1,0 +1,1146 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dep Janitor · Dual Theme Prototype</title>
+  <style>
+    :root,
+    html[data-theme="dark"] {
+      --bg: #121317;
+      --bg-2: #16181d;
+      --surface: #1b1f26;
+      --surface-2: #232833;
+      --surface-3: #20242c;
+      --line: #2e3542;
+      --line-soft: #262c37;
+      --text: #eef1f6;
+      --text-2: #a7afbd;
+      --text-3: #7f8797;
+      --text-4: #5f6674;
+      --iris: #7a6ff0;
+      --iris-soft: rgba(122,111,240,.16);
+      --maven: #c97a44;
+      --maven-soft: rgba(201,122,68,.14);
+      --gradle: #4fa59a;
+      --gradle-soft: rgba(79,165,154,.14);
+      --safe: #7bae84;
+      --safe-soft: rgba(123,174,132,.14);
+      --warn: #c79a56;
+      --warn-soft: rgba(199,154,86,.14);
+      --danger: #b76579;
+      --danger-soft: rgba(183,101,121,.14);
+      --protect: #7f8da6;
+      --protect-soft: rgba(127,141,166,.14);
+      --shadow: 0 24px 80px rgba(0,0,0,.36);
+      --hero-glow-a: rgba(122,111,240,.14);
+      --hero-glow-b: rgba(79,165,154,.10);
+      --grid: rgba(255,255,255,.02);
+      --window-bg: linear-gradient(180deg, rgba(255,255,255,.015), rgba(255,255,255,.005));
+    }
+
+    html[data-theme="light"] {
+      --bg: #f4f1ea;
+      --bg-2: #ece7dd;
+      --surface: #fffaf4;
+      --surface-2: #f7f2ea;
+      --surface-3: #f1ece4;
+      --line: #d8d0c4;
+      --line-soft: #e5ddd1;
+      --text: #1f2430;
+      --text-2: #5e6573;
+      --text-3: #7b8190;
+      --text-4: #a5abb8;
+      --iris: #6e63dd;
+      --iris-soft: rgba(110,99,221,.12);
+      --maven: #b96f3f;
+      --maven-soft: rgba(185,111,63,.12);
+      --gradle: #468f87;
+      --gradle-soft: rgba(70,143,135,.12);
+      --safe: #6f9e77;
+      --safe-soft: rgba(111,158,119,.12);
+      --warn: #b78949;
+      --warn-soft: rgba(183,137,73,.12);
+      --danger: #a55c6f;
+      --danger-soft: rgba(165,92,111,.12);
+      --protect: #728099;
+      --protect-soft: rgba(114,128,153,.12);
+      --shadow: 0 20px 60px rgba(43,33,19,.08);
+      --hero-glow-a: rgba(110,99,221,.08);
+      --hero-glow-b: rgba(70,143,135,.06);
+      --grid: rgba(31,36,48,.03);
+      --window-bg: linear-gradient(180deg, rgba(255,255,255,.72), rgba(255,255,255,.38));
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 12% 8%, var(--hero-glow-a), transparent 24%),
+        radial-gradient(circle at 88% 14%, var(--hero-glow-b), transparent 22%),
+        var(--bg);
+      color: var(--text);
+      font-family: "IBM Plex Sans", "PingFang SC", "Segoe UI", sans-serif;
+      transition: background .25s ease, color .25s ease;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background-image:
+        linear-gradient(var(--grid) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+      background-size: 28px 28px;
+      mask-image: radial-gradient(circle at center, black 44%, transparent 100%);
+      opacity: .9;
+    }
+
+    .page {
+      width: min(1680px, calc(100vw - 40px));
+      margin: 20px auto 56px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .theme-switcher {
+      position: sticky;
+      top: 14px;
+      z-index: 10;
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 14px;
+    }
+
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--surface) 88%, transparent);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+    }
+
+    .theme-toggle button {
+      border: 0;
+      padding: 10px 14px;
+      border-radius: 999px;
+      background: transparent;
+      color: var(--text-2);
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .theme-toggle button.active {
+      background: var(--iris-soft);
+      color: var(--text);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--iris) 24%, transparent);
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      padding: 34px 38px 30px;
+      border: 1px solid var(--line-soft);
+      border-radius: 30px;
+      background:
+        linear-gradient(135deg, var(--hero-glow-a), transparent 42%),
+        linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, white 8%), color-mix(in srgb, var(--surface) 96%, black 4%));
+      box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+      content: "artifact lab / local dependency governance / dual theme";
+      position: absolute;
+      right: 30px;
+      top: 24px;
+      color: var(--text-4);
+      font-size: 11px;
+      letter-spacing: .3em;
+      text-transform: uppercase;
+    }
+
+    .eyebrow {
+      color: var(--text-3);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .26em;
+      margin-bottom: 14px;
+    }
+
+    h1, h2, h3, .brand-title, .recipe-title, .topbar-title strong, .lead-metric, .before-after h4 {
+      font-family: "Iowan Old Style", "Source Han Serif SC", Georgia, serif;
+    }
+
+    .hero h1 {
+      margin: 0;
+      font-size: clamp(34px, 4vw, 56px);
+      line-height: 1.06;
+      letter-spacing: -.03em;
+      max-width: 980px;
+      font-weight: 600;
+    }
+
+    .hero p {
+      max-width: 980px;
+      margin: 14px 0 0;
+      color: var(--text-2);
+      font-size: 16px;
+      line-height: 1.8;
+    }
+
+    .meta { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 22px; }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: color-mix(in srgb, var(--surface) 92%, transparent);
+      color: var(--text-2);
+      font-size: 13px;
+    }
+
+    .chip.iris { background: var(--iris-soft); border-color: color-mix(in srgb, var(--iris) 20%, var(--line)); }
+    .chip.maven { background: var(--maven-soft); border-color: color-mix(in srgb, var(--maven) 20%, var(--line)); }
+    .chip.gradle { background: var(--gradle-soft); border-color: color-mix(in srgb, var(--gradle) 20%, var(--line)); }
+
+    .artboard {
+      margin-top: 28px;
+      padding: 16px;
+      border-radius: 28px;
+      border: 1px solid var(--line-soft);
+      background: color-mix(in srgb, var(--surface) 45%, transparent);
+      box-shadow: var(--shadow);
+    }
+
+    .artboard-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 18px;
+      padding: 6px 6px 16px;
+    }
+
+    .artboard-head h2 {
+      margin: 0 0 8px;
+      font-size: 28px;
+      line-height: 1.1;
+      font-weight: 600;
+      letter-spacing: -.02em;
+    }
+
+    .artboard-head p, .artboard-head span {
+      margin: 0;
+      color: var(--text-3);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .window {
+      display: grid;
+      grid-template-columns: 230px 1fr;
+      min-height: 820px;
+      border-radius: 24px;
+      overflow: hidden;
+      border: 1px solid var(--line-soft);
+      background: var(--window-bg), var(--bg);
+    }
+
+    .sidebar {
+      background: linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 56%, transparent), transparent 36%), var(--bg-2);
+      border-right: 1px solid var(--line-soft);
+      padding: 22px 18px;
+    }
+
+    .brand {
+      padding: 16px;
+      border-radius: 18px;
+      background: color-mix(in srgb, var(--surface) 90%, transparent);
+      border: 1px solid var(--line-soft);
+      margin-bottom: 26px;
+    }
+
+    .brand-mark {
+      width: 44px;
+      height: 44px;
+      border-radius: 14px;
+      background: linear-gradient(135deg, var(--iris), color-mix(in srgb, white 62%, var(--iris) 38%));
+      margin-bottom: 14px;
+      box-shadow: 0 16px 30px color-mix(in srgb, var(--iris) 26%, transparent);
+    }
+
+    .brand-title {
+      font-size: 24px;
+      margin: 0 0 6px;
+      letter-spacing: -.02em;
+      font-weight: 600;
+    }
+
+    .brand-sub {
+      color: var(--text-3);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .nav-group-title {
+      margin: 20px 8px 10px;
+      color: var(--text-4);
+      font-size: 11px;
+      letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+
+    .nav-item {
+      padding: 12px 14px;
+      border-radius: 14px;
+      border: 1px solid transparent;
+      color: var(--text-2);
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .nav-item strong { display: block; color: var(--text); margin-bottom: 4px; font-weight: 500; }
+    .nav-item small { color: var(--text-3); display: block; }
+
+    .nav-item.active {
+      background: var(--iris-soft);
+      border-color: color-mix(in srgb, var(--iris) 18%, var(--line));
+    }
+
+    .workspace { display: flex; flex-direction: column; min-width: 0; }
+
+    .topbar {
+      height: 82px;
+      padding: 0 28px;
+      border-bottom: 1px solid var(--line-soft);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 20px;
+      background: color-mix(in srgb, var(--surface) 24%, transparent);
+    }
+
+    .topbar-title .kicker {
+      color: var(--text-4);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .22em;
+      margin-bottom: 8px;
+    }
+
+    .topbar-title strong {
+      display: block;
+      font-size: 30px;
+      line-height: 1;
+      font-weight: 600;
+      letter-spacing: -.02em;
+    }
+
+    .topbar-title small {
+      display: block;
+      color: var(--text-3);
+      margin-top: 8px;
+      font-size: 13px;
+    }
+
+    .actions { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+
+    .pill,
+    .button {
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      font-size: 13px;
+    }
+
+    .pill { background: color-mix(in srgb, var(--surface) 80%, transparent); color: var(--text-2); }
+    .button { background: color-mix(in srgb, var(--surface) 88%, transparent); color: var(--text); }
+    .button.primary {
+      background: linear-gradient(135deg, var(--iris), color-mix(in srgb, white 22%, var(--iris) 78%));
+      border-color: color-mix(in srgb, var(--iris) 20%, var(--line));
+      box-shadow: 0 14px 28px color-mix(in srgb, var(--iris) 20%, transparent);
+      color: white;
+    }
+    .button.ghost-danger {
+      background: var(--danger-soft);
+      border-color: color-mix(in srgb, var(--danger) 18%, var(--line));
+    }
+
+    .content { padding: 28px; display: grid; gap: 20px; }
+
+    .panel, .rail-card, .detail-card, .table-card, .recipe-card, .forge-card, .before-after {
+      border-radius: 20px;
+      border: 1px solid var(--line-soft);
+      background: color-mix(in srgb, var(--surface) 94%, transparent);
+      box-shadow: inset 0 1px 0 color-mix(in srgb, white 12%, transparent);
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: end;
+      gap: 14px;
+      padding: 22px 22px 0;
+    }
+
+    .panel-header h3 {
+      margin: 0 0 6px;
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -.02em;
+    }
+
+    .panel-header p, .panel-header span { margin: 0; color: var(--text-3); font-size: 12px; line-height: 1.7; }
+    .panel-body { padding: 22px; }
+
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.45fr) minmax(320px, .85fr);
+      gap: 20px;
+    }
+
+    .analysis-panel {
+      padding: 28px;
+      display: grid;
+      grid-template-columns: 1.05fr .95fr;
+      gap: 24px;
+      align-items: stretch;
+    }
+
+    .metric-eyebrow, .section-kicker {
+      color: var(--text-4);
+      text-transform: uppercase;
+      letter-spacing: .22em;
+      font-size: 11px;
+      margin-bottom: 16px;
+    }
+
+    .lead-metric {
+      margin: 0 0 12px;
+      font-size: 72px;
+      line-height: .96;
+      letter-spacing: -.05em;
+      font-weight: 600;
+    }
+
+    .lead-caption { color: var(--text-2); font-size: 15px; line-height: 1.8; }
+
+    .analysis-strip { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+
+    .micro-card {
+      min-width: 140px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      border: 1px solid var(--line-soft);
+      background: color-mix(in srgb, var(--surface-2) 62%, transparent);
+    }
+
+    .micro-card .label { color: var(--text-3); font-size: 12px; margin-bottom: 8px; }
+    .micro-card .value { font-family: "JetBrains Mono", monospace; font-size: 18px; }
+
+    .chamber {
+      position: relative;
+      min-height: 280px;
+      display: grid;
+      place-items: center;
+      border-radius: 22px;
+      overflow: hidden;
+      border: 1px solid color-mix(in srgb, var(--iris) 18%, var(--line));
+      background:
+        radial-gradient(circle at center, color-mix(in srgb, var(--iris) 18%, transparent), transparent 44%),
+        linear-gradient(180deg, color-mix(in srgb, var(--surface-2) 85%, transparent), color-mix(in srgb, var(--surface-3) 88%, transparent));
+    }
+
+    .chamber::before,
+    .chamber::after {
+      content: "";
+      position: absolute;
+      border-radius: 50%;
+      border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+      inset: 16%;
+    }
+    .chamber::after { inset: 26%; border-color: color-mix(in srgb, var(--iris) 20%, var(--line)); }
+
+    .chamber-core { position: relative; z-index: 1; text-align: center; }
+    .chamber-core .small { color: var(--text-4); font-size: 11px; text-transform: uppercase; letter-spacing: .22em; }
+    .chamber-core .value { font-size: 48px; margin: 10px 0 8px; letter-spacing: -.04em; }
+    .chamber-core .desc { color: var(--text-2); font-size: 13px; line-height: 1.7; max-width: 280px; }
+
+    .origin-panel .panel-body { display: grid; gap: 16px; }
+
+    .origin-row {
+      display: grid;
+      grid-template-columns: 88px 1fr 74px;
+      gap: 12px;
+      align-items: center;
+      font-size: 13px;
+    }
+
+    .track { height: 14px; border-radius: 999px; background: color-mix(in srgb, var(--surface-3) 80%, transparent); overflow: hidden; }
+    .fill { height: 100%; border-radius: inherit; }
+    .fill.maven { background: linear-gradient(90deg, color-mix(in srgb, var(--maven) 32%, transparent), var(--maven)); }
+    .fill.gradle { background: linear-gradient(90deg, color-mix(in srgb, var(--gradle) 32%, transparent), var(--gradle)); }
+    .fill.safe { background: linear-gradient(90deg, color-mix(in srgb, var(--safe) 32%, transparent), var(--safe)); }
+    .fill.warn { background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 32%, transparent), var(--warn)); }
+    .fill.danger { background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 32%, transparent), var(--danger)); }
+
+    .signal-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    .signal {
+      padding: 14px;
+      border-radius: 16px;
+      border: 1px solid var(--line-soft);
+      background: color-mix(in srgb, var(--surface-2) 65%, transparent);
+    }
+    .signal .name { color: var(--text-3); font-size: 12px; margin-bottom: 8px; }
+    .signal .num { font-family: "JetBrains Mono", monospace; font-size: 20px; }
+
+    .strata-wrap { display: grid; gap: 16px; }
+    .strata-item {
+      padding: 16px 18px;
+      border-radius: 18px;
+      border: 1px solid var(--line-soft);
+      background: color-mix(in srgb, var(--surface-2) 66%, transparent);
+    }
+    .strata-top { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 14px; font-size: 13px; }
+    .strata-name { font-family: "JetBrains Mono", monospace; }
+    .strata-meta { color: var(--text-3); }
+
+    .layer-stack { position: relative; height: 86px; }
+    .layer {
+      position: absolute;
+      left: 0; right: 0;
+      height: 20px;
+      border-radius: 999px;
+      border: 1px solid var(--line-soft);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 12px;
+      color: var(--text-2);
+      font-size: 12px;
+      background: color-mix(in srgb, var(--surface) 94%, transparent);
+    }
+    .layer.newest { top: 0; background: color-mix(in srgb, var(--iris-soft) 72%, var(--surface)); border-color: color-mix(in srgb, var(--iris) 18%, var(--line)); }
+    .layer.mid.maven { top: 22px; left: 16px; right: 18px; background: color-mix(in srgb, var(--maven-soft) 72%, var(--surface)); }
+    .layer.mid.gradle { top: 22px; left: 16px; right: 18px; background: color-mix(in srgb, var(--gradle-soft) 72%, var(--surface)); }
+    .layer.old { top: 44px; left: 34px; right: 42px; }
+    .layer.risk { top: 66px; left: 52px; right: 68px; background: color-mix(in srgb, var(--danger-soft) 72%, var(--surface)); border-color: color-mix(in srgb, var(--danger) 18%, var(--line)); }
+
+    .heat-grid { display: grid; grid-template-columns: repeat(14, 1fr); gap: 8px; }
+    .cell {
+      aspect-ratio: 1;
+      border-radius: 8px;
+      background: color-mix(in srgb, var(--surface-2) 70%, transparent);
+      border: 1px solid color-mix(in srgb, var(--line-soft) 64%, transparent);
+    }
+    .cell.iris { background: color-mix(in srgb, var(--iris) 36%, transparent); }
+    .cell.maven { background: color-mix(in srgb, var(--maven) 36%, transparent); }
+    .cell.gradle { background: color-mix(in srgb, var(--gradle) 36%, transparent); }
+    .cell.safe { background: color-mix(in srgb, var(--safe) 36%, transparent); }
+    .cell.warn { background: color-mix(in srgb, var(--warn) 36%, transparent); }
+    .cell.danger { background: color-mix(in srgb, var(--danger) 38%, transparent); }
+
+    .legend-row { display: flex; flex-wrap: wrap; gap: 10px 14px; margin-top: 14px; }
+    .legend { display: inline-flex; align-items: center; gap: 8px; color: var(--text-3); font-size: 12px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+
+    .scan-layout { display: grid; grid-template-columns: 250px minmax(0, 1fr) 360px; gap: 20px; }
+    .rail-card, .detail-card, .table-card, .recipe-card, .forge-card { padding: 18px; }
+
+    .rail-section { margin-bottom: 20px; }
+    .rail-section h4, .detail-card h4, .table-card h4, .forge-card h4 {
+      margin: 0 0 12px;
+      color: var(--text-4);
+      text-transform: uppercase;
+      letter-spacing: .18em;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .filter-pill, .version-pill, .field .box, .artifact-row {
+      border: 1px solid var(--line-soft);
+      background: color-mix(in srgb, var(--surface-2) 65%, transparent);
+    }
+
+    .filter-pill {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 11px 12px;
+      border-radius: 14px;
+      color: var(--text-2);
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+    .filter-pill.active { background: var(--iris-soft); border-color: color-mix(in srgb, var(--iris) 18%, var(--line)); color: var(--text); }
+
+    .artifact-table { display: grid; gap: 12px; }
+    .artifact-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) 78px 78px 90px;
+      gap: 10px;
+      align-items: center;
+      padding: 14px 16px;
+      border-radius: 16px;
+    }
+    .artifact-row.active { background: var(--iris-soft); border-color: color-mix(in srgb, var(--iris) 18%, var(--line)); }
+    .artifact-main strong {
+      display: block;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 13px;
+      margin-bottom: 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .artifact-main small, .artifact-num { color: var(--text-3); font-size: 12px; }
+    .artifact-num { font-family: "JetBrains Mono", monospace; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      border: 1px solid var(--line-soft);
+      white-space: nowrap;
+    }
+    .badge.maven { background: var(--maven-soft); }
+    .badge.gradle { background: var(--gradle-soft); }
+    .badge.safe { background: var(--safe-soft); }
+    .badge.warn { background: var(--warn-soft); }
+    .badge.danger { background: var(--danger-soft); }
+    .badge.protect { background: var(--protect-soft); }
+
+    .metric-line, .stat-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--line-soft);
+      color: var(--text-2);
+      font-size: 13px;
+    }
+    .metric-line:last-child, .stat-row:last-child { border-bottom: 0; }
+
+    .version-rail { display: grid; gap: 12px; margin-top: 16px; }
+    .version-pill {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 14px;
+      border-radius: 16px;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px;
+    }
+    .version-pill.latest { background: var(--iris-soft); }
+    .version-pill.maven { border-left: 3px solid var(--maven); }
+    .version-pill.gradle { border-left: 3px solid var(--gradle); }
+    .version-pill.danger { border-left: 3px solid var(--danger); }
+
+    .recipe-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+    .recipe-card { padding: 20px; }
+    .recipe-header { display: flex; justify-content: space-between; gap: 12px; align-items: start; margin-bottom: 18px; }
+    .recipe-title { font-size: 24px; line-height: 1.06; margin: 0 0 8px; font-weight: 600; }
+    .recipe-text { color: var(--text-2); font-size: 14px; line-height: 1.8; margin: 0 0 16px; }
+    .recipe-stats { display: grid; gap: 10px; }
+
+    .delta-grid, .forge-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .before-after, .forge-card { padding: 22px; }
+    .before-after h4 { margin: 0 0 16px; font-size: 24px; font-weight: 600; letter-spacing: -.02em; }
+
+    .spectrum {
+      display: flex;
+      height: 16px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: color-mix(in srgb, var(--surface-3) 72%, transparent);
+      margin-bottom: 14px;
+    }
+    .spectrum .safe { width: 52%; background: var(--safe); }
+    .spectrum .warn { width: 30%; background: var(--warn); }
+    .spectrum .danger { width: 18%; background: var(--danger); }
+    .spectrum.after .safe { width: 72%; }
+    .spectrum.after .warn { width: 20%; }
+    .spectrum.after .danger { width: 8%; }
+
+    .field { margin-bottom: 14px; }
+    .field label {
+      display: block;
+      color: var(--text-4);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: .16em;
+      margin-bottom: 9px;
+    }
+    .field .box {
+      padding: 13px 14px;
+      border-radius: 14px;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .footer-note {
+      margin-top: 24px;
+      text-align: center;
+      color: var(--text-3);
+      font-size: 13px;
+    }
+
+    @media (max-width: 1380px) {
+      .window,
+      .dashboard-grid,
+      .analysis-panel,
+      .scan-layout,
+      .recipe-grid,
+      .delta-grid,
+      .forge-grid {
+        grid-template-columns: 1fr;
+      }
+      .window { min-height: auto; }
+      .lead-metric { font-size: 56px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="theme-switcher">
+      <div class="theme-toggle" aria-label="主题切换">
+        <button id="darkBtn" class="active" type="button">深色 · Obsidian</button>
+        <button id="lightBtn" type="button">浅色 · Ivory</button>
+      </div>
+    </div>
+
+    <section class="hero">
+      <div class="eyebrow">Dep Janitor / Dual Theme Prototype</div>
+      <h1>同一套产品语义，支持深色实验室与浅色档案台两种主题。</h1>
+      <p>这版原型已支持主题切换。深色主题用于沉浸式分析与操作，浅色主题用于办公、阅读、截图和演示。两者共享同一套 Maven / Gradle 来源语义与风险语义，避免切换主题后产品认知断裂。</p>
+      <div class="meta">
+        <span class="chip iris">品牌：Iris Purple</span>
+        <span class="chip maven">Maven：Copper</span>
+        <span class="chip gradle">Gradle：Verdigris</span>
+        <span class="chip">支持记忆主题选择</span>
+      </div>
+    </section>
+
+    <section class="artboard">
+      <div class="artboard-head">
+        <div>
+          <h2>原型 A · Observatory 总览</h2>
+          <p>首页维持“主分析舱 + 来源结构舱 + 依赖地层 + 风险热区”的产品结构，主题切换只改变表达方式，不改变信息架构。</p>
+        </div>
+        <span>支持 Dark / Light</span>
+      </div>
+      <div class="window">
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="brand-mark"></div>
+            <div class="brand-title">Dep Janitor</div>
+            <div class="brand-sub">Artifact governance for Maven & Gradle local caches.</div>
+          </div>
+          <div class="nav-group-title">Workspace</div>
+          <div class="nav-item active"><strong>Observatory</strong><small>总览 / 风险光谱 / 热区</small></div>
+          <div class="nav-item"><strong>Artifact Atlas</strong><small>扫描结果 / 依赖地层</small></div>
+          <div class="nav-item"><strong>Cleanup Recipes</strong><small>策略卡 / 释放收益</small></div>
+          <div class="nav-item"><strong>Simulation Chamber</strong><small>预演 / 前后对照</small></div>
+          <div class="nav-item"><strong>Rule Forge</strong><small>路径 / 白名单 / 规则</small></div>
+        </aside>
+        <main class="workspace">
+          <div class="topbar">
+            <div class="topbar-title">
+              <div class="kicker">Dependency Observatory</div>
+              <strong>本机依赖结构总览</strong>
+              <small>先分析，再清理。无论浅色还是深色，结构都保持稳定。</small>
+            </div>
+            <div class="actions">
+              <span class="pill">最近扫描 10:42</span>
+              <span class="pill">低风险建议包 8.7 GB</span>
+              <button class="button primary">开始扫描</button>
+            </div>
+          </div>
+          <div class="content">
+            <div class="dashboard-grid">
+              <div class="panel analysis-panel">
+                <div>
+                  <div class="metric-eyebrow">Analysis Chamber</div>
+                  <div class="lead-metric">26.1 GB</div>
+                  <div class="lead-caption">当前可预演释放空间。系统已识别 Maven 旧版本、Gradle 缓存沉积、失败下载残留和 wrapper 关联风险。</div>
+                  <div class="analysis-strip">
+                    <div class="micro-card"><div class="label">总缓存</div><div class="value">82.4 GB</div></div>
+                    <div class="micro-card"><div class="label">候选项</div><div class="value">181 items</div></div>
+                    <div class="micro-card"><div class="label">高风险</div><div class="value">7 groups</div></div>
+                  </div>
+                </div>
+                <div class="chamber">
+                  <div class="chamber-core">
+                    <div class="small">Safe first simulation</div>
+                    <div class="value">12.6 GB</div>
+                    <div class="desc">若仅执行低风险与部分中风险策略，本次建议先释放 12.6 GB。</div>
+                  </div>
+                </div>
+              </div>
+              <div class="panel origin-panel">
+                <div class="panel-header">
+                  <div>
+                    <h3>来源结构舱</h3>
+                    <p>来源色和风险色在双主题下保持同一语义。</p>
+                  </div>
+                  <span>Maven / Gradle / Risk</span>
+                </div>
+                <div class="panel-body">
+                  <div class="origin-row"><div>Maven</div><div class="track"><div class="fill maven" style="width:41%"></div></div><div>34.1 GB</div></div>
+                  <div class="origin-row"><div>Gradle</div><div class="track"><div class="fill gradle" style="width:59%"></div></div><div>48.3 GB</div></div>
+                  <div class="origin-row"><div>Low risk</div><div class="track"><div class="fill safe" style="width:62%"></div></div><div>128</div></div>
+                  <div class="origin-row"><div>Mid risk</div><div class="track"><div class="fill warn" style="width:28%"></div></div><div>46</div></div>
+                  <div class="origin-row"><div>High risk</div><div class="track"><div class="fill danger" style="width:10%"></div></div><div>7</div></div>
+                  <div class="signal-grid">
+                    <div class="signal"><div class="name">Wrapper Risk</div><div class="num">3.8 GB</div></div>
+                    <div class="signal"><div class="name">Protected</div><div class="num">17 rules</div></div>
+                    <div class="signal"><div class="name">Unused >180d</div><div class="num">61</div></div>
+                    <div class="signal"><div class="name">Failed Fetch</div><div class="num">220 MB</div></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="dashboard-grid">
+              <div class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h3>Artifact Strata 依赖地层</h3>
+                    <p>版本以沉积层方式呈现，而不是普通表格。</p>
+                  </div>
+                  <span>适配双主题</span>
+                </div>
+                <div class="panel-body">
+                  <div class="strata-wrap">
+                    <div class="strata-item">
+                      <div class="strata-top"><div class="strata-name">org.slf4j:slf4j-api</div><div class="strata-meta">8 versions · 1.4 GB</div></div>
+                      <div class="layer-stack">
+                        <div class="layer newest"><span>2.0.13 · keep</span><span>latest</span></div>
+                        <div class="layer mid maven"><span>2.0.9 · keep</span><span>Maven</span></div>
+                        <div class="layer old"><span>1.7.36 · aging</span><span>210d</span></div>
+                        <div class="layer risk"><span>1.7.21 · candidate</span><span>mid risk</span></div>
+                      </div>
+                    </div>
+                    <div class="strata-item">
+                      <div class="strata-top"><div class="strata-name">gradle-7.6-bin</div><div class="strata-meta">3 archives · 1.8 GB</div></div>
+                      <div class="layer-stack">
+                        <div class="layer newest"><span>8.7-bin · keep</span><span>latest</span></div>
+                        <div class="layer mid gradle"><span>7.6-bin · inspect</span><span>Gradle</span></div>
+                        <div class="layer risk"><span>6.9-bin · caution</span><span>high risk</span></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="panel">
+                <div class="panel-header">
+                  <div>
+                    <h3>风险热区</h3>
+                    <p>热区矩阵替代模板化 donut。</p>
+                  </div>
+                  <span>Heat map</span>
+                </div>
+                <div class="panel-body">
+                  <div class="heat-grid">
+                    <div class="cell iris"></div><div class="cell maven"></div><div class="cell gradle"></div><div class="cell warn"></div><div class="cell safe"></div><div class="cell danger"></div><div class="cell gradle"></div><div class="cell maven"></div><div class="cell safe"></div><div class="cell warn"></div><div class="cell gradle"></div><div class="cell danger"></div><div class="cell iris"></div><div class="cell maven"></div>
+                    <div class="cell gradle"></div><div class="cell safe"></div><div class="cell maven"></div><div class="cell warn"></div><div class="cell safe"></div><div class="cell gradle"></div><div class="cell danger"></div><div class="cell safe"></div><div class="cell iris"></div><div class="cell gradle"></div><div class="cell maven"></div><div class="cell warn"></div><div class="cell safe"></div><div class="cell danger"></div>
+                    <div class="cell safe"></div><div class="cell gradle"></div><div class="cell iris"></div><div class="cell warn"></div><div class="cell maven"></div><div class="cell gradle"></div><div class="cell safe"></div><div class="cell warn"></div><div class="cell danger"></div><div class="cell maven"></div><div class="cell safe"></div><div class="cell gradle"></div><div class="cell iris"></div><div class="cell warn"></div>
+                  </div>
+                  <div class="legend-row">
+                    <span class="legend"><i class="dot" style="background: var(--maven)"></i>Maven</span>
+                    <span class="legend"><i class="dot" style="background: var(--gradle)"></i>Gradle</span>
+                    <span class="legend"><i class="dot" style="background: var(--safe)"></i>Safe</span>
+                    <span class="legend"><i class="dot" style="background: var(--warn)"></i>Warn</span>
+                    <span class="legend"><i class="dot" style="background: var(--danger)"></i>Danger</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <section class="artboard">
+      <div class="artboard-head">
+        <div>
+          <h2>原型 B · Artifact Atlas 扫描结果</h2>
+          <p>三栏结构保持不变，主题切换后仅调整背景、边框和对比度，用户的操作路径不变。</p>
+        </div>
+        <span>来源树 / Artifact 列表 / 版本详情</span>
+      </div>
+      <div class="window">
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="brand-mark"></div>
+            <div class="brand-title">Artifact Atlas</div>
+            <div class="brand-sub">Inspect sources, version layers and cleanup candidates.</div>
+          </div>
+          <div class="nav-group-title">Filters</div>
+          <div class="nav-item active"><strong>Artifact Atlas</strong><small>扫描结果 / 风险分析</small></div>
+          <div class="nav-item"><strong>Cleanup Recipes</strong><small>策略包生成</small></div>
+        </aside>
+        <main class="workspace">
+          <div class="topbar">
+            <div class="topbar-title">
+              <div class="kicker">Scan Result Explorer</div>
+              <strong>扫描结果 · 依赖图谱</strong>
+              <small>同一页面同时适配深色沉浸场景与浅色阅读场景。</small>
+            </div>
+            <div class="actions">
+              <span class="pill">181 candidates</span>
+              <button class="button">导出报告</button>
+              <button class="button primary">加入清理建议</button>
+            </div>
+          </div>
+          <div class="content">
+            <div class="scan-layout">
+              <div class="rail-card">
+                <div class="rail-section">
+                  <h4>Sources</h4>
+                  <div class="filter-pill active"><span>全部来源</span><span>181</span></div>
+                  <div class="filter-pill"><span>Maven 仓库</span><span>92</span></div>
+                  <div class="filter-pill"><span>Gradle 缓存</span><span>74</span></div>
+                  <div class="filter-pill"><span>Gradle Wrapper</span><span>15</span></div>
+                </div>
+                <div class="rail-section">
+                  <h4>Risk</h4>
+                  <div class="filter-pill"><span>低风险优先</span><span>128</span></div>
+                  <div class="filter-pill"><span>中风险观察</span><span>46</span></div>
+                  <div class="filter-pill"><span>高风险谨慎</span><span>7</span></div>
+                </div>
+              </div>
+              <div class="table-card">
+                <h4>Artifact Rows</h4>
+                <div class="artifact-table">
+                  <div class="artifact-row active"><div class="artifact-main"><strong>org.slf4j:slf4j-api</strong><small>8 versions · org/slf4j</small></div><div class="artifact-num">1.4 GB</div><div class="artifact-num">23d</div><div><span class="badge warn">中风险</span></div></div>
+                  <div class="artifact-row"><div class="artifact-main"><strong>junit:junit</strong><small>9 versions · historic</small></div><div class="artifact-num">920 MB</div><div class="artifact-num">210d</div><div><span class="badge safe">低风险</span></div></div>
+                  <div class="artifact-row"><div class="artifact-main"><strong>gradle-7.6-bin</strong><small>wrapper linked</small></div><div class="artifact-num">1.8 GB</div><div class="artifact-num">5d</div><div><span class="badge danger">高风险</span></div></div>
+                  <div class="artifact-row"><div class="artifact-main"><strong>*.lastUpdated</strong><small>failed residue</small></div><div class="artifact-num">220 MB</div><div class="artifact-num">350d</div><div><span class="badge safe">低风险</span></div></div>
+                  <div class="artifact-row"><div class="artifact-main"><strong>transforms-3</strong><small>gradle transforms cache</small></div><div class="artifact-num">3.1 GB</div><div class="artifact-num">140d</div><div><span class="badge warn">中风险</span></div></div>
+                </div>
+              </div>
+              <div class="detail-card">
+                <h4>Version Strata</h4>
+                <div class="metric-line"><span>Artifact</span><strong>org.slf4j:slf4j-api</strong></div>
+                <div class="metric-line"><span>Source</span><span class="badge maven">Maven</span></div>
+                <div class="metric-line"><span>Rule</span><span>保留最近 2 个版本</span></div>
+                <div class="metric-line"><span>Potential Release</span><strong>840 MB</strong></div>
+                <div class="metric-line"><span>Whitelist</span><span class="badge protect">未命中</span></div>
+                <div class="version-rail">
+                  <div class="version-pill latest maven"><span>2.0.13</span><span>keep</span></div>
+                  <div class="version-pill maven"><span>2.0.9</span><span>keep</span></div>
+                  <div class="version-pill maven"><span>1.7.36</span><span>aging</span></div>
+                  <div class="version-pill danger maven"><span>1.7.21</span><span>candidate</span></div>
+                  <div class="version-pill danger maven"><span>1.7.7</span><span>candidate</span></div>
+                </div>
+                <div style="margin-top:18px; display:grid; gap:10px;">
+                  <button class="button">查看路径</button>
+                  <button class="button">加入白名单</button>
+                  <button class="button primary">加入本次方案</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <section class="artboard">
+      <div class="artboard-head">
+        <div>
+          <h2>原型 C · Cleanup Recipes 与 Simulation Chamber</h2>
+          <p>策略卡与预演对照页同样支持双主题：深色偏控制台，浅色偏实验记录卡。</p>
+        </div>
+        <span>规则包 / Before & After</span>
+      </div>
+      <div class="window">
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="brand-mark"></div>
+            <div class="brand-title">Cleanup Recipes</div>
+            <div class="brand-sub">Strategy-driven cleanup, not blind deletion.</div>
+          </div>
+          <div class="nav-group-title">Current Run</div>
+          <div class="nav-item active"><strong>Recipes</strong><small>策略卡 / 风险等级</small></div>
+          <div class="nav-item"><strong>Simulation</strong><small>清理前后预演</small></div>
+        </aside>
+        <main class="workspace">
+          <div class="topbar">
+            <div class="topbar-title">
+              <div class="kicker">Strategy Package</div>
+              <strong>清理建议 · 策略卡</strong>
+              <small>主题切换不影响策略语义、释放估算和风险等级的表达方式。</small>
+            </div>
+            <div class="actions">
+              <span class="pill">预计总释放 26.1 GB</span>
+              <button class="button">重新生成</button>
+              <button class="button primary">进入预演</button>
+            </div>
+          </div>
+          <div class="content">
+            <div class="recipe-grid">
+              <div class="recipe-card">
+                <div class="recipe-header"><div><div class="recipe-title">Residue Sweep</div><span class="badge safe">低风险</span></div><span class="badge maven">Maven</span></div>
+                <p class="recipe-text">清理 `.lastUpdated`、失败下载残留、过期 SNAPSHOT 等低风险项目，适合首次执行。</p>
+                <div class="recipe-stats">
+                  <div class="stat-row"><span>命中数量</span><strong>84</strong></div>
+                  <div class="stat-row"><span>预计释放</span><strong>8.7 GB</strong></div>
+                  <div class="stat-row"><span>保护项影响</span><strong>0</strong></div>
+                  <div class="stat-row"><span>默认状态</span><strong>启用</strong></div>
+                </div>
+              </div>
+              <div class="recipe-card">
+                <div class="recipe-header"><div><div class="recipe-title">Version Retain-2</div><span class="badge warn">中风险</span></div><span class="badge protect">Rule</span></div>
+                <p class="recipe-text">按“保留最近 2 个版本”生成建议，适合历史版本堆积明显、但需人工复核的 artifact。</p>
+                <div class="recipe-stats">
+                  <div class="stat-row"><span>命中 artifact</span><strong>61</strong></div>
+                  <div class="stat-row"><span>预计释放</span><strong>12.1 GB</strong></div>
+                  <div class="stat-row"><span>需要复核</span><strong>19</strong></div>
+                  <div class="stat-row"><span>默认状态</span><strong>手动确认</strong></div>
+                </div>
+              </div>
+              <div class="recipe-card">
+                <div class="recipe-header"><div><div class="recipe-title">Wrapper Caution</div><span class="badge danger">高风险</span></div><span class="badge gradle">Gradle</span></div>
+                <p class="recipe-text">与 Gradle wrapper distributions 相关，默认不加入自动建议，必须进入预演后确认。</p>
+                <div class="recipe-stats">
+                  <div class="stat-row"><span>命中组数</span><strong>7</strong></div>
+                  <div class="stat-row"><span>预计释放</span><strong>5.3 GB</strong></div>
+                  <div class="stat-row"><span>构建影响风险</span><strong>高</strong></div>
+                  <div class="stat-row"><span>默认状态</span><strong>关闭</strong></div>
+                </div>
+              </div>
+            </div>
+            <div class="delta-grid">
+              <div class="before-after">
+                <h4>Before · 当前结构</h4>
+                <div class="spectrum"><div class="safe"></div><div class="warn"></div><div class="danger"></div></div>
+                <div class="stat-row"><span>总缓存</span><strong>82.4 GB</strong></div>
+                <div class="stat-row"><span>候选项</span><strong>181</strong></div>
+                <div class="stat-row"><span>高风险关联</span><strong>7</strong></div>
+                <div class="stat-row"><span>白名单规则</span><strong>17</strong></div>
+              </div>
+              <div class="before-after">
+                <h4>After · 预演结果</h4>
+                <div class="spectrum after"><div class="safe"></div><div class="warn"></div><div class="danger"></div></div>
+                <div class="stat-row"><span>预计释放</span><strong>12.6 GB</strong></div>
+                <div class="stat-row"><span>保留项</span><strong>白名单已排除</strong></div>
+                <div class="stat-row"><span>删除方式</span><strong>优先移入回收站</strong></div>
+                <div class="stat-row"><span>高风险复核</span><strong>仍需二次确认</strong></div>
+                <div style="display:flex; justify-content:flex-end; gap:12px; margin-top:18px;">
+                  <button class="button">取消</button>
+                  <button class="button">确认预演</button>
+                  <button class="button ghost-danger">开始清理</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <section class="artboard">
+      <div class="artboard-head">
+        <div>
+          <h2>原型 D · Rule Forge 规则工坊</h2>
+          <p>浅色和深色都保留“治理规则工坊”的定位，不退化为普通设置表单。</p>
+        </div>
+        <span>Paths / Policies / Whitelist / Recovery</span>
+      </div>
+      <div class="window">
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="brand-mark"></div>
+            <div class="brand-title">Rule Forge</div>
+            <div class="brand-sub">Turn cleanup choices into reusable governance rules.</div>
+          </div>
+          <div class="nav-group-title">Configuration</div>
+          <div class="nav-item active"><strong>Paths & Policies</strong><small>路径 / 保留策略 / 删除方式</small></div>
+          <div class="nav-item"><strong>Whitelist</strong><small>关键依赖保护</small></div>
+          <div class="nav-item"><strong>Recovery</strong><small>日志 / 回收站 / 失败处理</small></div>
+        </aside>
+        <main class="workspace">
+          <div class="topbar">
+            <div class="topbar-title">
+              <div class="kicker">Governance Rules</div>
+              <strong>设置 · 规则工坊</strong>
+              <small>双主题只改变视觉承载方式，不改变治理规则和交互结构。</small>
+            </div>
+            <div class="actions">
+              <button class="button">恢复默认</button>
+              <button class="button primary">保存设置</button>
+            </div>
+          </div>
+          <div class="content">
+            <div class="forge-grid">
+              <div class="forge-card">
+                <h4>Path Discovery</h4>
+                <div class="field"><label>Maven Repository</label><div class="box">~/.m2/repository</div></div>
+                <div class="field"><label>Gradle Caches</label><div class="box">~/.gradle/caches</div></div>
+                <div class="field"><label>Gradle Wrapper</label><div class="box">~/.gradle/wrapper</div></div>
+              </div>
+              <div class="forge-card">
+                <h4>Retention Rules</h4>
+                <div class="field"><label>保留最近版本数</label><div class="box">2</div></div>
+                <div class="field"><label>未使用阈值</label><div class="box">180 天</div></div>
+                <div class="field"><label>默认建议策略</label><div class="box">仅优先启用低风险策略包</div></div>
+              </div>
+              <div class="forge-card">
+                <h4>Delete & Recovery</h4>
+                <div class="field"><label>删除方式</label><div class="box">优先移入回收站</div></div>
+                <div class="field"><label>高风险复核</label><div class="box">始终二次确认</div></div>
+                <div class="field"><label>失败日志</label><div class="box">保留详细日志</div></div>
+              </div>
+              <div class="forge-card">
+                <h4>Whitelist Vault</h4>
+                <div class="field"><label>当前规则</label><div class="box">org.jetbrains.kotlin:*<br>gradle-8.7-bin<br>company-internal-sdk:*<br>com.acme:legacy-bridge:*</div></div>
+                <div style="display:flex; gap:12px; flex-wrap: wrap; margin-top: 8px;">
+                  <button class="button">新增规则</button>
+                  <button class="button">导入</button>
+                  <button class="button">导出</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </section>
+
+    <div class="footer-note">当前原型已支持浅色 / 深色双主题切换，并保持统一产品语义：Iris Purple / Maven Copper / Gradle Verdigris / Risk Spectrum。</div>
+  </div>
+
+  <script>
+    const html = document.documentElement;
+    const darkBtn = document.getElementById('darkBtn');
+    const lightBtn = document.getElementById('lightBtn');
+    const storageKey = 'dep-janitor-theme';
+
+    function setTheme(theme) {
+      html.setAttribute('data-theme', theme);
+      darkBtn.classList.toggle('active', theme === 'dark');
+      lightBtn.classList.toggle('active', theme === 'light');
+      try { localStorage.setItem(storageKey, theme); } catch (e) {}
+    }
+
+    darkBtn.addEventListener('click', () => setTheme('dark'));
+    lightBtn.addEventListener('click', () => setTheme('light'));
+
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved === 'light' || saved === 'dark') setTheme(saved);
+    } catch (e) {}
+  </script>
+</body>
+</html>

@@ -1,0 +1,32 @@
+# --- OS / Editor ---
+.DS_Store
+Thumbs.db
+
+# --- IntelliJ IDEA / JetBrains ---
+.idea/
+*.iml
+out/
+
+# --- Gradle / Kotlin ---
+.gradle/
+.kotlin/
+build/
+**/build/
+
+# --- Logs / temp files ---
+*.log
+*.tmp
+*.swp
+*.swo
+
+# --- Compose Desktop / packaging ---
+compose_compiler/
+
+# --- Local runtime / test artifacts ---
+*.hprof
+hs_err_pid*
+replay_pid*
+
+# --- Optional local env files ---
+.env
+.env.*
