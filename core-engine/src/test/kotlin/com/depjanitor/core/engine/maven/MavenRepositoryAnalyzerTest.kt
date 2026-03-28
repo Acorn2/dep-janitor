@@ -1,6 +1,8 @@
 package com.depjanitor.core.engine.maven
 
+import com.depjanitor.core.model.TimeBasis
 import java.nio.file.Files
+import java.nio.file.attribute.FileTime
 import kotlin.io.path.createDirectories
 import kotlin.io.path.writeBytes
 import kotlin.test.Test
@@ -28,5 +30,22 @@ class MavenRepositoryAnalyzerTest {
         assertEquals("2.0.13", target.versions.first().label)
         assertEquals("candidate", target.versions.last().state)
         assertTrue(target.versions.last().sizeBytes > 0)
+    }
+
+    @Test
+    fun `should prefer last access time when it is newer than last modified`() {
+        val root = Files.createTempDirectory("maven-repo-access")
+        val versionDir = root.resolve("org/example/demo/1.0.0")
+        val jar = versionDir.createDirectories().resolve("demo-1.0.0.jar")
+        jar.writeBytes(ByteArray(100))
+        Files.setLastModifiedTime(jar, FileTime.fromMillis(1_700_000_000_000L))
+        Files.setAttribute(jar, "basic:lastAccessTime", FileTime.fromMillis(1_800_000_000_000L))
+
+        val entry = analyzer.analyze(root).single()
+        val version = entry.versions.single()
+
+        assertEquals(TimeBasis.LAST_ACCESSED, version.timeBasis)
+        assertEquals(false, version.timeBasisFallback)
+        assertEquals(1_800_000_000_000L, version.lastModifiedMillis)
     }
 }

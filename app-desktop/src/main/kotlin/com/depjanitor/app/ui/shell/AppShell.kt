@@ -30,6 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.depjanitor.app.ui.formatBytes
 import com.depjanitor.app.ui.pages.ArtifactAtlasPage
 import com.depjanitor.app.ui.pages.CleanupRecipesPage
 import com.depjanitor.app.ui.pages.ObservatoryPage
@@ -37,8 +38,13 @@ import com.depjanitor.app.ui.pages.RuleForgePage
 import com.depjanitor.app.ui.pages.SimulationPage
 import com.depjanitor.app.ui.theme.ThemeMode
 import com.depjanitor.app.ui.theme.semanticColors
+import com.depjanitor.core.model.CleanupExecutionMode
+import com.depjanitor.core.model.CleanupExecutionResult
+import com.depjanitor.core.model.CleanupRuleSet
+import com.depjanitor.core.model.CustomScanPath
 import com.depjanitor.core.model.DashboardSnapshot
 import com.depjanitor.core.model.PathKind
+import com.depjanitor.core.model.WhitelistEntry
 
 private enum class AppDestination(
     val label: String,
@@ -80,11 +86,39 @@ fun AppShell(
     isScanning: Boolean,
     statusText: String,
     onScan: () -> Unit,
+    isCleaning: Boolean,
+    lastCleanupResult: CleanupExecutionResult?,
+    onExecuteCleanup: (Set<String>, CleanupExecutionMode) -> Unit,
+    onOpenPath: (String) -> Unit,
+    selectedCandidateIds: Set<String>,
+    onAddCandidatesToPlan: (Set<String>) -> Unit,
+    onRemoveCandidatesFromPlan: (Set<String>) -> Unit,
+    onToggleCandidateInPlan: (String) -> Unit,
+    onResetPlanSelection: () -> Unit,
+    onClearPlanSelection: () -> Unit,
+    scanCustomPaths: Boolean,
+    onScanCustomPathsChange: (Boolean) -> Unit,
+    onRuleSetChange: (CleanupRuleSet) -> Unit,
+    onAddWhitelistEntry: (WhitelistEntry) -> Unit,
+    onRemoveWhitelistEntry: (WhitelistEntry) -> Unit,
+    projectProtectionPaths: List<String>,
+    onAddProjectProtectionPath: (String) -> Unit,
+    onRemoveProjectProtectionPath: (String) -> Unit,
+    customScanPaths: List<CustomScanPath>,
+    onAddCustomScanPath: (CustomScanPath) -> Unit,
+    onToggleCustomScanPathEnabled: (CustomScanPath) -> Unit,
+    onRemoveCustomScanPath: (CustomScanPath) -> Unit,
     onPathOverrideChange: (PathKind, String) -> Unit,
     onPathOverrideReset: (PathKind) -> Unit,
 ) {
     var destination by remember { mutableStateOf(AppDestination.Observatory) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val selectedPlanCandidates = remember(snapshot.candidates, selectedCandidateIds) {
+        snapshot.candidates.filter { it.id in selectedCandidateIds }
+    }
+    val selectedPlanBytes = remember(selectedPlanCandidates) {
+        selectedPlanCandidates.sumOf { it.sizeBytes }
+    }
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -112,6 +146,8 @@ fun AppShell(
                     isScanning = isScanning,
                     statusText = statusText,
                     onScan = onScan,
+                    selectedPlanCount = selectedPlanCandidates.size,
+                    selectedPlanBytes = selectedPlanBytes,
                 )
                 Column(
                     modifier = Modifier
@@ -120,13 +156,47 @@ fun AppShell(
                 ) {
                     when (destination) {
                         AppDestination.Observatory -> ObservatoryPage(snapshot, isScanning, statusText)
-                        AppDestination.ArtifactAtlas -> ArtifactAtlasPage(snapshot)
-                        AppDestination.CleanupRecipes -> CleanupRecipesPage(snapshot)
-                        AppDestination.Simulation -> SimulationPage(snapshot)
+                        AppDestination.ArtifactAtlas -> ArtifactAtlasPage(
+                            snapshot = snapshot,
+                            selectedCandidateIds = selectedCandidateIds,
+                            onAddCandidatesToPlan = onAddCandidatesToPlan,
+                            onRemoveCandidatesFromPlan = onRemoveCandidatesFromPlan,
+                            onAddWhitelistEntry = onAddWhitelistEntry,
+                            onOpenPath = onOpenPath,
+                        )
+                        AppDestination.CleanupRecipes -> CleanupRecipesPage(
+                            snapshot = snapshot,
+                            selectedCandidateIds = selectedCandidateIds,
+                            onToggleCandidateInPlan = onToggleCandidateInPlan,
+                            onAddWhitelistEntry = onAddWhitelistEntry,
+                            onOpenPath = onOpenPath,
+                        )
+                        AppDestination.Simulation -> SimulationPage(
+                            snapshot = snapshot,
+                            isCleaning = isCleaning,
+                            lastCleanupResult = lastCleanupResult,
+                            selectedCandidateIds = selectedCandidateIds,
+                            onToggleCandidateInPlan = onToggleCandidateInPlan,
+                            onResetPlanSelection = onResetPlanSelection,
+                            onClearPlanSelection = onClearPlanSelection,
+                            onExecuteCleanup = onExecuteCleanup,
+                            onOpenPath = onOpenPath,
+                        )
                         AppDestination.RuleForge -> RuleForgePage(
                             snapshot = snapshot,
                             themeMode = themeMode,
                             onThemeModeChange = onThemeModeChange,
+                            scanCustomPaths = scanCustomPaths,
+                            onScanCustomPathsChange = onScanCustomPathsChange,
+                            onRuleSetChange = onRuleSetChange,
+                            onRemoveWhitelistEntry = onRemoveWhitelistEntry,
+                            projectProtectionPaths = projectProtectionPaths,
+                            onAddProjectProtectionPath = onAddProjectProtectionPath,
+                            onRemoveProjectProtectionPath = onRemoveProjectProtectionPath,
+                            customScanPaths = customScanPaths,
+                            onAddCustomScanPath = onAddCustomScanPath,
+                            onToggleCustomScanPathEnabled = onToggleCustomScanPathEnabled,
+                            onRemoveCustomScanPath = onRemoveCustomScanPath,
                             onPathOverrideChange = onPathOverrideChange,
                             onPathOverrideReset = onPathOverrideReset,
                         )
@@ -188,6 +258,8 @@ private fun TopBar(
     isScanning: Boolean,
     statusText: String,
     onScan: () -> Unit,
+    selectedPlanCount: Int,
+    selectedPlanBytes: Long,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -199,6 +271,11 @@ private fun TopBar(
             Text(destination.title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.SemiBold)
             Text(destination.description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(statusText, style = MaterialTheme.typography.bodySmall, color = if (isScanning) MaterialTheme.semanticColors.warn else MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(
+                "当前执行方案：$selectedPlanCount 项 · ${formatBytes(selectedPlanBytes)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (selectedPlanCount > 0) MaterialTheme.semanticColors.safe else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
 
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(10.dp)) {

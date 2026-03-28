@@ -36,7 +36,28 @@ data class SimulationPreview(
     val protectedRuleCount: Int,
 )
 
+data class DuplicateVersionEntry(
+    val coordinate: String,
+    val source: ArtifactSource,
+    val versionCount: Int,
+    val staleVersionCount: Int,
+    val totalSizeBytes: Long,
+)
+
+data class VersionDistributionEntry(
+    val label: String,
+    val artifactCount: Int,
+    val totalSizeBytes: Long,
+)
+
+data class WrapperDistributionEntry(
+    val label: String,
+    val sizeBytes: Long,
+    val lastModifiedMillis: Long,
+)
+
 data class DashboardSnapshot(
+    val scannedAtMillis: Long,
     val totalBytes: Long,
     val mavenBytes: Long,
     val gradleBytes: Long,
@@ -45,10 +66,16 @@ data class DashboardSnapshot(
     val mediumRiskCount: Int,
     val highRiskCount: Int,
     val hotspots: List<HotspotEntry>,
+    val duplicateVersionRankings: List<DuplicateVersionEntry>,
+    val oldVersionDistributions: List<VersionDistributionEntry>,
+    val wrapperDistributions: List<WrapperDistributionEntry>,
     val strata: List<ArtifactStrataPreview>,
     val recipes: List<RecipePreview>,
     val simulation: SimulationPreview,
     val ruleSet: CleanupRuleSet,
+    val whitelistEntries: List<WhitelistEntry>,
+    val projectProtectionPaths: List<String>,
+    val protectedCoordinates: Set<String>,
     val candidates: List<CleanupCandidate>,
     val detectedPaths: List<DetectedPath>,
     val artifactEntries: List<ArtifactScanEntry>,

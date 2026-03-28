@@ -5,6 +5,9 @@ data class VersionScanEntry(
     val sizeBytes: Long,
     val lastModifiedMillis: Long,
     val source: ArtifactSource,
+    val timeBasis: TimeBasis = TimeBasis.LAST_MODIFIED,
+    val timeBasisFallback: Boolean = false,
+    val path: String? = null,
     val riskLevel: RiskLevel? = null,
     val state: String = "inspect",
 )
@@ -14,9 +17,12 @@ data class ArtifactScanEntry(
     val source: ArtifactSource,
     val group: String? = null,
     val artifact: String? = null,
+    val path: String? = null,
     val totalSizeBytes: Long,
     val lastModifiedMillis: Long,
     val versions: List<VersionScanEntry>,
+    val timeBasis: TimeBasis = TimeBasis.LAST_MODIFIED,
+    val timeBasisFallback: Boolean = false,
 )
 
 val ArtifactScanEntry.versionCount: Int

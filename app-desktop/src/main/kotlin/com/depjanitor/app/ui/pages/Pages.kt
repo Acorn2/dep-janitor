@@ -7,10 +7,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,6 +37,12 @@ import com.depjanitor.app.ui.components.PanelCard
 import com.depjanitor.app.ui.theme.ThemeMode
 import com.depjanitor.app.ui.theme.semanticColors
 import com.depjanitor.core.model.ArtifactSource
+import com.depjanitor.core.model.CleanupRuleSet
+import com.depjanitor.core.model.CleanupExecutionMode
+import com.depjanitor.core.model.CleanupExecutionResult
+import com.depjanitor.core.model.CleanupExecutionStatus
+import com.depjanitor.core.model.CleanupCandidate
+import com.depjanitor.core.model.CustomScanPath
 import com.depjanitor.core.model.DashboardSnapshot
 import com.depjanitor.core.model.DetectedPath
 import com.depjanitor.core.model.PathKind
@@ -40,6 +50,12 @@ import com.depjanitor.core.model.ArtifactScanEntry
 import com.depjanitor.core.model.primaryRiskLevel
 import com.depjanitor.core.model.versionCount
 import com.depjanitor.core.model.RiskLevel
+import com.depjanitor.core.model.WhitelistEntry
+import com.depjanitor.core.model.displayLabel
+import com.depjanitor.core.model.failureCount
+import com.depjanitor.core.model.releasedBytes
+import com.depjanitor.core.model.skippedCount
+import com.depjanitor.core.model.successCount
 
 @Composable
 fun ObservatoryPage(snapshot: DashboardSnapshot, isScanning: Boolean, statusText: String) {
@@ -94,6 +110,7 @@ fun ObservatoryPage(snapshot: DashboardSnapshot, isScanning: Boolean, statusText
         PanelCard(title = "扫描状态", subtitle = "Sprint 1 已接入真实目录扫描。") {
             Badge(if (isScanning) "正在扫描" else "扫描完成", if (isScanning) MaterialTheme.semanticColors.warn else MaterialTheme.semanticColors.safe)
             Text(statusText, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("最近扫描：${formatTimestamp(snapshot.scannedAtMillis)}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -119,6 +136,43 @@ fun ObservatoryPage(snapshot: DashboardSnapshot, isScanning: Boolean, statusText
                     ArtifactSource.WRAPPER -> listOf(MaterialTheme.semanticColors.wrapper.copy(alpha = 0.35f), MaterialTheme.semanticColors.wrapper)
                 }
                 GradientBar(hotspot.name, formatBytes(hotspot.sizeBytes), hotspot.sizeBytes.toFloat() / maxHotspot, colors)
+            }
+        }
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+            PanelCard(title = "重复版本排行", subtitle = "按版本数量和体积识别重复依赖热点。", modifier = Modifier.weight(1f)) {
+                snapshot.duplicateVersionRankings.forEach { item ->
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(item.coordinate, fontWeight = FontWeight.SemiBold)
+                            Text("${item.versionCount} 个版本 · ${item.staleVersionCount} 个旧版本", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                        }
+                        Text(formatBytes(item.totalSizeBytes), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            PanelCard(title = "旧版本分布", subtitle = "观察历史版本密度与潜在清理空间。", modifier = Modifier.weight(1f)) {
+                val maxDistribution = snapshot.oldVersionDistributions.maxOfOrNull { it.totalSizeBytes }?.takeIf { it > 0 } ?: 1L
+                snapshot.oldVersionDistributions.forEach { distribution ->
+                    GradientBar(
+                        distribution.label,
+                        "${distribution.artifactCount} 个 artifact · ${formatBytes(distribution.totalSizeBytes)}",
+                        distribution.totalSizeBytes.toFloat() / maxDistribution,
+                        listOf(MaterialTheme.semanticColors.warn.copy(alpha = 0.35f), MaterialTheme.semanticColors.warn),
+                    )
+                }
+            }
+        }
+
+        PanelCard(title = "Wrapper 分布", subtitle = "帮助识别多个 Gradle wrapper distribution 的占用结构。") {
+            val maxWrapper = snapshot.wrapperDistributions.maxOfOrNull { it.sizeBytes }?.takeIf { it > 0 } ?: 1L
+            snapshot.wrapperDistributions.forEach { wrapper ->
+                GradientBar(
+                    wrapper.label,
+                    "${formatBytes(wrapper.sizeBytes)} · ${formatTimestamp(wrapper.lastModifiedMillis)}",
+                    wrapper.sizeBytes.toFloat() / maxWrapper,
+                    listOf(MaterialTheme.semanticColors.wrapper.copy(alpha = 0.35f), MaterialTheme.semanticColors.wrapper),
+                )
             }
         }
 
@@ -161,14 +215,22 @@ fun ObservatoryPage(snapshot: DashboardSnapshot, isScanning: Boolean, statusText
 }
 
 private enum class ArtifactSortMode(val label: String) {
+    PRIORITY("按清理优先级"),
     SIZE("按大小"),
-    LAST_MODIFIED("按最近修改"),
+    LAST_MODIFIED("按时间参考"),
     VERSION_COUNT("按版本数"),
     NAME("按名称"),
 }
 
 @Composable
-fun ArtifactAtlasPage(snapshot: DashboardSnapshot) {
+fun ArtifactAtlasPage(
+    snapshot: DashboardSnapshot,
+    selectedCandidateIds: Set<String>,
+    onAddCandidatesToPlan: (Set<String>) -> Unit,
+    onRemoveCandidatesFromPlan: (Set<String>) -> Unit,
+    onAddWhitelistEntry: (WhitelistEntry) -> Unit,
+    onOpenPath: (String) -> Unit,
+) {
     val entries = snapshot.artifactEntries.ifEmpty {
         snapshot.strata.map { strata ->
             ArtifactScanEntry(
@@ -192,9 +254,15 @@ fun ArtifactAtlasPage(snapshot: DashboardSnapshot) {
     var query by remember(entries) { mutableStateOf("") }
     var selectedSource by remember(entries) { mutableStateOf<ArtifactSource?>(null) }
     var selectedRisk by remember(entries) { mutableStateOf<RiskLevel?>(null) }
-    var sortMode by remember(entries) { mutableStateOf(ArtifactSortMode.SIZE) }
+    var sortMode by remember(entries) { mutableStateOf(ArtifactSortMode.PRIORITY) }
+    val candidatesByCoordinate = remember(snapshot.candidates) {
+        snapshot.candidates.groupBy { it.coordinate }
+    }
+    val priorityByCoordinate = remember(entries, candidatesByCoordinate) {
+        entries.associate { entry -> entry.coordinate to cleanupPriorityMetrics(entry, candidatesByCoordinate) }
+    }
 
-    val filteredEntries = remember(entries, query, selectedSource, selectedRisk, sortMode) {
+    val filteredEntries = remember(entries, query, selectedSource, selectedRisk, sortMode, priorityByCoordinate) {
         entries
             .asSequence()
             .filter { entry ->
@@ -206,6 +274,13 @@ fun ArtifactAtlasPage(snapshot: DashboardSnapshot) {
             .filter { entry -> selectedRisk == null || entry.primaryRiskLevel == selectedRisk }
             .sortedWith(
                 when (sortMode) {
+                    ArtifactSortMode.PRIORITY -> compareByDescending<ArtifactScanEntry> {
+                        priorityByCoordinate[it.coordinate]?.priorityScore ?: Int.MIN_VALUE
+                    }
+                        .thenByDescending { priorityByCoordinate[it.coordinate]?.reclaimableBytes ?: 0L }
+                        .thenByDescending { priorityByCoordinate[it.coordinate]?.staleCandidateCount ?: 0 }
+                        .thenByDescending { it.totalSizeBytes }
+                        .thenBy { it.coordinate.lowercase() }
                     ArtifactSortMode.SIZE -> compareByDescending<ArtifactScanEntry> { it.totalSizeBytes }
                     ArtifactSortMode.LAST_MODIFIED -> compareByDescending<ArtifactScanEntry> { it.lastModifiedMillis }
                     ArtifactSortMode.VERSION_COUNT -> compareByDescending<ArtifactScanEntry> { it.versionCount }
@@ -222,6 +297,18 @@ fun ArtifactAtlasPage(snapshot: DashboardSnapshot) {
         }
     }
     val selected = filteredEntries.firstOrNull { it.coordinate == selectedCoordinate } ?: filteredEntries.firstOrNull()
+    val relatedCandidates = remember(selected, snapshot.candidates) {
+        selected?.let { entry ->
+            snapshot.candidates.filter { candidate ->
+                candidate.coordinate == entry.coordinate && candidate.path != null && candidate.riskLevel != RiskLevel.PROTECTED
+            }
+        }.orEmpty()
+    }
+    val relatedCandidateIds = remember(relatedCandidates) { relatedCandidates.map { it.id }.toSet() }
+    val selectedRelatedIds = remember(selectedCandidateIds, relatedCandidateIds) { selectedCandidateIds.intersect(relatedCandidateIds) }
+    val relatedReclaimableBytes = remember(relatedCandidates) { relatedCandidates.sumOf { it.sizeBytes } }
+    val allRelatedSelected = relatedCandidateIds.isNotEmpty() && selectedRelatedIds.size == relatedCandidateIds.size
+    val pendingRelatedCount = relatedCandidateIds.size - selectedRelatedIds.size
 
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
         PanelCard(title = "Sources", subtitle = "已接入真实 Maven / Gradle 解析结果。", modifier = Modifier.weight(0.9f)) {
@@ -247,6 +334,18 @@ fun ArtifactAtlasPage(snapshot: DashboardSnapshot) {
                 FilterBadge("低", selectedRisk == RiskLevel.LOW) { selectedRisk = RiskLevel.LOW }
                 FilterBadge("中", selectedRisk == RiskLevel.MEDIUM) { selectedRisk = RiskLevel.MEDIUM }
                 FilterBadge("高", selectedRisk == RiskLevel.HIGH) { selectedRisk = RiskLevel.HIGH }
+            }
+            Spacer(Modifier.height(10.dp))
+            Text("最近扫描：${formatTimestamp(snapshot.scannedAtMillis)}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            Spacer(Modifier.height(8.dp))
+            Text("重复版本排行", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            snapshot.duplicateVersionRankings.take(3).forEach { item ->
+                Text("• ${item.coordinate} · ${item.versionCount} 版本", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("Wrapper 分布", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            snapshot.wrapperDistributions.take(3).forEach { item ->
+                Text("• ${item.label} · ${formatBytes(item.sizeBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         PanelCard(title = "Artifact Rows", subtitle = "支持搜索、筛选与排序。", modifier = Modifier.weight(1.35f)) {
@@ -284,6 +383,7 @@ fun ArtifactAtlasPage(snapshot: DashboardSnapshot) {
                         Column(horizontalAlignment = Alignment.End) {
                             Text(formatBytes(entry.totalSizeBytes))
                             Text(formatTimestamp(entry.lastModifiedMillis), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                            Text(entry.timeBasis.displayLabel(entry.timeBasisFallback), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
@@ -293,14 +393,28 @@ fun ArtifactAtlasPage(snapshot: DashboardSnapshot) {
             if (selected == null) {
                 Text("暂无可展示的 artifact 结果", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
+                val priorityMetrics = priorityByCoordinate[selected.coordinate] ?: cleanupPriorityMetrics(selected, candidatesByCoordinate)
                 Text(selected.coordinate, fontWeight = FontWeight.SemiBold)
                 Text(formatBytes(selected.totalSizeBytes), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text("最近修改：${formatTimestamp(selected.lastModifiedMillis)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("时间参考：${formatTimestamp(selected.lastModifiedMillis)}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(
+                    "可清理候选 ${relatedCandidateIds.size} 项 · 已加入方案 ${selectedRelatedIds.size} 项 · 可释放 ${formatBytes(relatedReclaimableBytes)}",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (priorityMetrics.hasActionableCandidate) {
+                    Text(
+                        "清理优先级：${priorityMetrics.label}",
+                        color = MaterialTheme.semanticColors.safe,
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
                 selected.versions.forEach { layer ->
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(layer.label)
                             Text(formatTimestamp(layer.lastModifiedMillis), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                            Text(layer.timeBasis.displayLabel(layer.timeBasisFallback), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text(formatBytes(layer.sizeBytes))
@@ -309,8 +423,35 @@ fun ArtifactAtlasPage(snapshot: DashboardSnapshot) {
                     }
                 }
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = {}) { Text("查看路径") }
-                Button(onClick = {}) { Text("加入本次方案") }
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(
+                        onClick = {
+                            selected.path?.let(onOpenPath)
+                                ?: selected.versions.firstOrNull { !it.path.isNullOrBlank() }?.path?.let(onOpenPath)
+                        },
+                        enabled = selected.path != null || selected.versions.any { it.path != null },
+                    ) { Text("查看路径") }
+                    OutlinedButton(onClick = { onAddWhitelistEntry(WhitelistEntry.coordinate(selected.coordinate)) }) { Text("加入白名单") }
+                }
+                Button(
+                    onClick = {
+                        if (allRelatedSelected) {
+                            onRemoveCandidatesFromPlan(relatedCandidateIds)
+                        } else {
+                            onAddCandidatesToPlan(relatedCandidateIds)
+                        }
+                    },
+                    enabled = relatedCandidateIds.isNotEmpty(),
+                ) {
+                    Text(
+                        when {
+                            relatedCandidateIds.isEmpty() -> "无可加入候选"
+                            allRelatedSelected -> "移出本次方案"
+                            pendingRelatedCount < relatedCandidateIds.size -> "补充剩余 $pendingRelatedCount 项"
+                            else -> "加入本次方案"
+                        },
+                    )
+                }
             }
         }
     }
@@ -332,7 +473,13 @@ private fun FilterBadge(label: String, active: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-fun CleanupRecipesPage(snapshot: DashboardSnapshot) {
+fun CleanupRecipesPage(
+    snapshot: DashboardSnapshot,
+    selectedCandidateIds: Set<String>,
+    onToggleCandidateInPlan: (String) -> Unit,
+    onAddWhitelistEntry: (WhitelistEntry) -> Unit,
+    onOpenPath: (String) -> Unit,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         PanelCard(title = "Rule Snapshot", subtitle = "当前清理建议由默认规则集生成。") {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -340,6 +487,8 @@ fun CleanupRecipesPage(snapshot: DashboardSnapshot) {
                 MetricPill("未使用阈值", "${snapshot.ruleSet.unusedDaysThreshold} 天")
                 MetricPill("优先低风险", if (snapshot.ruleSet.prioritizeLowRisk) "是" else "否")
                 MetricPill("移动到回收站", if (snapshot.ruleSet.moveToTrash) "是" else "否")
+                MetricPill("白名单", snapshot.whitelistEntries.size.toString())
+                MetricPill("当前方案", selectedCandidateIds.size.toString())
             }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -379,8 +528,10 @@ fun CleanupRecipesPage(snapshot: DashboardSnapshot) {
                             candidate.versionLabel?.let {
                                 Text("版本 / 文件：$it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
+                            Text("时间依据：${candidate.timeBasis.displayLabel(candidate.timeBasisFallback)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            val actionable = candidate.path != null && candidate.riskLevel != RiskLevel.PROTECTED
                             Text(formatBytes(candidate.sizeBytes))
                             Text(formatTimestamp(candidate.lastModifiedMillis), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(
@@ -388,6 +539,30 @@ fun CleanupRecipesPage(snapshot: DashboardSnapshot) {
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (candidate.defaultSelected) MaterialTheme.semanticColors.safe else MaterialTheme.colorScheme.onSurfaceVariant,
                             )
+                            OutlinedButton(
+                                onClick = {
+                                    onAddWhitelistEntry(
+                                        candidate.path?.let(WhitelistEntry::path)
+                                            ?: WhitelistEntry.coordinate(candidate.coordinate),
+                                    )
+                                },
+                            ) { Text("加入白名单") }
+                            OutlinedButton(
+                                onClick = { candidate.path?.let(onOpenPath) },
+                                enabled = candidate.path != null,
+                            ) { Text("查看路径") }
+                            Button(
+                                onClick = { onToggleCandidateInPlan(candidate.id) },
+                                enabled = actionable,
+                            ) {
+                                Text(
+                                    when {
+                                        !actionable -> "不可加入"
+                                        candidate.id in selectedCandidateIds -> "移出方案"
+                                        else -> "加入方案"
+                                    },
+                                )
+                            }
                         }
                     }
                 }
@@ -397,9 +572,27 @@ fun CleanupRecipesPage(snapshot: DashboardSnapshot) {
 }
 
 @Composable
-fun SimulationPage(snapshot: DashboardSnapshot) {
-    val readyCandidates = snapshot.candidates.filter { it.defaultSelected }
-    val reviewCandidates = snapshot.candidates.filterNot { it.defaultSelected }
+fun SimulationPage(
+    snapshot: DashboardSnapshot,
+    isCleaning: Boolean,
+    lastCleanupResult: CleanupExecutionResult?,
+    selectedCandidateIds: Set<String>,
+    onToggleCandidateInPlan: (String) -> Unit,
+    onResetPlanSelection: () -> Unit,
+    onClearPlanSelection: () -> Unit,
+    onExecuteCleanup: (Set<String>, CleanupExecutionMode) -> Unit,
+    onOpenPath: (String) -> Unit,
+) {
+    val actionableCandidates = snapshot.candidates.filter { it.path != null && it.riskLevel != RiskLevel.PROTECTED }
+    var showConfirmDialog by remember { mutableStateOf(false) }
+    var highRiskConfirmed by remember(selectedCandidateIds) { mutableStateOf(false) }
+    var directDeleteConfirmed by remember(selectedCandidateIds, snapshot.ruleSet.moveToTrash) { mutableStateOf(false) }
+    val selectedCandidates = actionableCandidates.filter { it.id in selectedCandidateIds }
+    val readyCandidates = actionableCandidates.filter { it.defaultSelected }
+    val reviewCandidates = actionableCandidates.filterNot { it.defaultSelected }
+    val selectedHighRiskCount = selectedCandidates.count { it.riskLevel == RiskLevel.HIGH }
+    val executionMode = if (snapshot.ruleSet.moveToTrash) CleanupExecutionMode.MOVE_TO_TRASH else CleanupExecutionMode.DELETE_DIRECTLY
+
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             PanelCard(title = "Before", subtitle = "当前缓存结构", modifier = Modifier.weight(1f)) {
@@ -408,11 +601,17 @@ fun SimulationPage(snapshot: DashboardSnapshot) {
                 MetricPill("保护项", snapshot.simulation.protectedRuleCount.toString())
             }
             PanelCard(title = "After", subtitle = "默认方案预演结果", modifier = Modifier.weight(1f)) {
-                MetricPill("默认释放", formatBytes(snapshot.simulation.releasableBytes))
-                MetricPill("已选项目", snapshot.simulation.selectedItemCount.toString())
-                MetricPill("高风险复核", snapshot.simulation.highRiskCount.toString())
-                OutlinedButton(onClick = {}) { Text("确认预演") }
-                Button(onClick = {}) { Text("开始清理") }
+                MetricPill("默认释放", formatBytes(selectedCandidates.sumOf { it.sizeBytes }))
+                MetricPill("已选项目", selectedCandidateIds.size.toString())
+                MetricPill("高风险复核", selectedHighRiskCount.toString())
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = onResetPlanSelection) { Text("恢复默认选择") }
+                    OutlinedButton(onClick = onClearPlanSelection, enabled = selectedCandidateIds.isNotEmpty()) { Text("清空方案") }
+                }
+                Button(
+                    onClick = { showConfirmDialog = true },
+                    enabled = selectedCandidateIds.isNotEmpty() && !isCleaning,
+                ) { Text(if (isCleaning) "清理中…" else "开始清理") }
             }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
@@ -421,7 +620,12 @@ fun SimulationPage(snapshot: DashboardSnapshot) {
                     Text("当前没有自动加入方案的低风险项。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     readyCandidates.take(8).forEach { candidate ->
-                        CandidateRow(candidate)
+                        CandidateSelectionRow(
+                            candidate = candidate,
+                            checked = candidate.id in selectedCandidateIds,
+                            onCheckedChange = { onToggleCandidateInPlan(candidate.id) },
+                            onOpenPath = onOpenPath,
+                        )
                     }
                 }
             }
@@ -430,11 +634,94 @@ fun SimulationPage(snapshot: DashboardSnapshot) {
                     Text("当前没有待复核项。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     reviewCandidates.take(8).forEach { candidate ->
-                        CandidateRow(candidate)
+                        CandidateSelectionRow(
+                            candidate = candidate,
+                            checked = candidate.id in selectedCandidateIds,
+                            onCheckedChange = { onToggleCandidateInPlan(candidate.id) },
+                            onOpenPath = onOpenPath,
+                        )
                     }
                 }
             }
         }
+
+        lastCleanupResult?.let { result ->
+            PanelCard(title = "Execution Result", subtitle = "展示最近一次清理执行结果。") {
+                MetricPill("成功", result.successCount.toString())
+                MetricPill("失败", result.failureCount.toString())
+                MetricPill("跳过", result.skippedCount.toString())
+                MetricPill("释放空间", formatBytes(result.releasedBytes))
+                result.entries.take(10).forEach { entry ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f), RoundedCornerShape(16.dp))
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(entry.item.coordinate, fontWeight = FontWeight.SemiBold)
+                            Text("执行方式：${result.mode.label}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            entry.message?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        Badge(
+                            entry.status.label,
+                            when (entry.status) {
+                                CleanupExecutionStatus.TRASHED, CleanupExecutionStatus.DELETED -> MaterialTheme.semanticColors.safe
+                                CleanupExecutionStatus.SKIPPED -> MaterialTheme.semanticColors.warn
+                                CleanupExecutionStatus.FAILED -> MaterialTheme.semanticColors.danger
+                            },
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    if (showConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmDialog = false },
+            title = { Text("确认执行清理") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("本次将处理 ${selectedCandidates.size} 项候选，预计释放 ${formatBytes(selectedCandidates.sumOf { it.sizeBytes })}。")
+                    Text("执行方式：${executionMode.label}")
+                    Text("高风险项：$selectedHighRiskCount 项")
+                    Text("白名单项不会进入执行计划。")
+                    if (selectedHighRiskCount > 0) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Checkbox(checked = highRiskConfirmed, onCheckedChange = { highRiskConfirmed = it })
+                            Text("我已确认处理高风险项")
+                        }
+                    }
+                    if (executionMode == CleanupExecutionMode.DELETE_DIRECTLY) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Checkbox(checked = directDeleteConfirmed, onCheckedChange = { directDeleteConfirmed = it })
+                            Text("我确认直接删除而非移入回收站")
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showConfirmDialog = false
+                        onExecuteCleanup(
+                            selectedCandidateIds,
+                            executionMode,
+                        )
+                    },
+                    enabled = (selectedHighRiskCount == 0 || highRiskConfirmed) &&
+                        (executionMode != CleanupExecutionMode.DELETE_DIRECTLY || directDeleteConfirmed),
+                ) { Text("确认清理") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmDialog = false }) { Text("取消") }
+            },
+        )
     }
 }
 
@@ -443,24 +730,197 @@ fun RuleForgePage(
     snapshot: DashboardSnapshot,
     themeMode: ThemeMode,
     onThemeModeChange: (ThemeMode) -> Unit,
+    scanCustomPaths: Boolean,
+    onScanCustomPathsChange: (Boolean) -> Unit,
+    onRuleSetChange: (CleanupRuleSet) -> Unit,
+    onRemoveWhitelistEntry: (WhitelistEntry) -> Unit,
+    projectProtectionPaths: List<String>,
+    onAddProjectProtectionPath: (String) -> Unit,
+    onRemoveProjectProtectionPath: (String) -> Unit,
+    customScanPaths: List<CustomScanPath>,
+    onAddCustomScanPath: (CustomScanPath) -> Unit,
+    onToggleCustomScanPathEnabled: (CustomScanPath) -> Unit,
+    onRemoveCustomScanPath: (CustomScanPath) -> Unit,
     onPathOverrideChange: (PathKind, String) -> Unit,
     onPathOverrideReset: (PathKind) -> Unit,
 ) {
+    var retainVersionsInput by remember(snapshot.ruleSet.retainLatestVersions) { mutableStateOf(snapshot.ruleSet.retainLatestVersions.toString()) }
+    var unusedDaysInput by remember(snapshot.ruleSet.unusedDaysThreshold) { mutableStateOf(snapshot.ruleSet.unusedDaysThreshold.toString()) }
+    var prioritizeLowRisk by remember(snapshot.ruleSet.prioritizeLowRisk) { mutableStateOf(snapshot.ruleSet.prioritizeLowRisk) }
+    var moveToTrash by remember(snapshot.ruleSet.moveToTrash) { mutableStateOf(snapshot.ruleSet.moveToTrash) }
+    var deleteLastUpdated by remember(snapshot.ruleSet.deleteLastUpdatedFiles) { mutableStateOf(snapshot.ruleSet.deleteLastUpdatedFiles) }
+    var deleteFailedDownloads by remember(snapshot.ruleSet.deleteFailedDownloads) { mutableStateOf(snapshot.ruleSet.deleteFailedDownloads) }
+    var deleteStaleSnapshots by remember(snapshot.ruleSet.deleteStaleSnapshots) { mutableStateOf(snapshot.ruleSet.deleteStaleSnapshots) }
+    var newProjectPath by remember(projectProtectionPaths) { mutableStateOf("") }
+    var newCustomPath by remember { mutableStateOf("") }
+    var newCustomPathKind by remember { mutableStateOf(PathKind.MAVEN_REPOSITORY) }
+    val defaultPathRows = remember(snapshot.detectedPaths) {
+        PathKind.entries.mapNotNull { kind ->
+            snapshot.detectedPaths.firstOrNull { it.kind == kind }
+        }
+    }
+
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
         PanelCard(title = "Path Discovery", subtitle = "路径管理已支持自定义覆盖并参与下一次扫描。", modifier = Modifier.weight(1.2f)) {
-            snapshot.detectedPaths.forEach { detectedPath ->
+            defaultPathRows.forEach { detectedPath ->
                 EditablePathRow(
                     path = detectedPath,
                     onSave = { onPathOverrideChange(detectedPath.kind, it) },
                     onReset = { onPathOverrideReset(detectedPath.kind) },
                 )
             }
+            Spacer(Modifier.height(8.dp))
+            Text("新增扫描路径", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                PathKind.entries.forEach { kind ->
+                    FilterBadge(kind.label, newCustomPathKind == kind) { newCustomPathKind = kind }
+                }
+            }
+            OutlinedTextField(
+                value = newCustomPath,
+                onValueChange = { newCustomPath = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("新增自定义扫描路径") },
+                singleLine = true,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Button(
+                    onClick = {
+                        onAddCustomScanPath(CustomScanPath(kind = newCustomPathKind, path = newCustomPath.trim()))
+                        newCustomPath = ""
+                    },
+                    enabled = newCustomPath.isNotBlank(),
+                ) { Text("添加扫描路径") }
+                MetricPill("附加路径", customScanPaths.size.toString())
+                MetricPill("启用中", customScanPaths.count { it.enabled }.toString())
+            }
+            if (customScanPaths.isEmpty()) {
+                Text("当前没有新增扫描路径。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                customScanPaths.forEach { entry ->
+                    CustomScanPathRow(
+                        entry = entry,
+                        onToggleEnabled = { onToggleCustomScanPathEnabled(entry) },
+                        onRemove = { onRemoveCustomScanPath(entry) },
+                    )
+                }
+            }
         }
-        PanelCard(title = "Rule Forge", subtitle = "当前先落地主题、默认规则和路径治理能力。", modifier = Modifier.weight(1f)) {
-            MetricPill("保留最近版本数", snapshot.ruleSet.retainLatestVersions.toString())
-            MetricPill("未使用阈值", "${snapshot.ruleSet.unusedDaysThreshold} 天")
+        PanelCard(title = "Rule Forge", subtitle = "把规则从展示态升级为真实可编辑配置。", modifier = Modifier.weight(1f)) {
+            OutlinedTextField(
+                value = retainVersionsInput,
+                onValueChange = { retainVersionsInput = it.filter(Char::isDigit) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("保留最近 N 个版本") },
+                singleLine = true,
+            )
+            OutlinedTextField(
+                value = unusedDaysInput,
+                onValueChange = { unusedDaysInput = it.filter(Char::isDigit) },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("未使用时间阈值（天）") },
+                singleLine = true,
+            )
+            ToggleRow("启用自定义路径扫描", scanCustomPaths) { onScanCustomPathsChange(it) }
+            ToggleRow("低风险优先", prioritizeLowRisk) { prioritizeLowRisk = it }
+            ToggleRow("优先移入回收站", moveToTrash) { moveToTrash = it }
+            ToggleRow("清理 .lastUpdated", deleteLastUpdated) { deleteLastUpdated = it }
+            ToggleRow("清理失败下载残留", deleteFailedDownloads) { deleteFailedDownloads = it }
+            ToggleRow("清理过期 SNAPSHOT", deleteStaleSnapshots) { deleteStaleSnapshots = it }
+
+            val parsedRetainVersions = retainVersionsInput.toIntOrNull()?.coerceIn(1, 20) ?: snapshot.ruleSet.retainLatestVersions
+            val parsedUnusedDays = unusedDaysInput.toIntOrNull()?.coerceIn(1, 3650) ?: snapshot.ruleSet.unusedDaysThreshold
+            val nextRuleSet = CleanupRuleSet(
+                retainLatestVersions = parsedRetainVersions,
+                unusedDaysThreshold = parsedUnusedDays,
+                deleteLastUpdatedFiles = deleteLastUpdated,
+                deleteFailedDownloads = deleteFailedDownloads,
+                deleteStaleSnapshots = deleteStaleSnapshots,
+                prioritizeLowRisk = prioritizeLowRisk,
+                moveToTrash = moveToTrash,
+            )
+
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(onClick = { onRuleSetChange(nextRuleSet) }) { Text("保存规则并重扫") }
+                OutlinedButton(
+                    onClick = {
+                        val defaults = CleanupRuleSet()
+                        retainVersionsInput = defaults.retainLatestVersions.toString()
+                        unusedDaysInput = defaults.unusedDaysThreshold.toString()
+                        prioritizeLowRisk = defaults.prioritizeLowRisk
+                        moveToTrash = defaults.moveToTrash
+                        deleteLastUpdated = defaults.deleteLastUpdatedFiles
+                        deleteFailedDownloads = defaults.deleteFailedDownloads
+                        deleteStaleSnapshots = defaults.deleteStaleSnapshots
+                        onRuleSetChange(defaults)
+                    },
+                ) { Text("恢复默认规则") }
+            }
+
+            MetricPill("当前生效保留数", snapshot.ruleSet.retainLatestVersions.toString())
+            MetricPill("当前阈值", "${snapshot.ruleSet.unusedDaysThreshold} 天")
             MetricPill("默认策略", if (snapshot.ruleSet.prioritizeLowRisk) "低风险优先" else "全部候选")
             MetricPill("回收站策略", if (snapshot.ruleSet.moveToTrash) "优先移入" else "直接删除")
+            Spacer(Modifier.height(8.dp))
+            Text("白名单管理", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (snapshot.whitelistEntries.isEmpty()) {
+                Text("当前还没有白名单项。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                snapshot.whitelistEntries.take(8).forEach { entry ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f), RoundedCornerShape(16.dp))
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(entry.value, fontWeight = FontWeight.Medium)
+                            Text(entry.type.label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        OutlinedButton(onClick = { onRemoveWhitelistEntry(entry) }) { Text("移除") }
+                    }
+                }
+            }
+            Spacer(Modifier.height(8.dp))
+            Text("项目引用保护", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("为项目目录建立基础引用保护，命中的依赖将自动标记为保护。", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(
+                value = newProjectPath,
+                onValueChange = { newProjectPath = it },
+                modifier = Modifier.fillMaxWidth(),
+                label = { Text("添加项目目录路径") },
+                singleLine = true,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Button(
+                    onClick = {
+                        onAddProjectProtectionPath(newProjectPath)
+                        newProjectPath = ""
+                    },
+                    enabled = newProjectPath.isNotBlank(),
+                ) { Text("添加保护项目") }
+                MetricPill("受保护项目", projectProtectionPaths.size.toString())
+                MetricPill("命中坐标", snapshot.protectedCoordinates.size.toString())
+            }
+            if (projectProtectionPaths.isEmpty()) {
+                Text("当前没有配置项目引用保护路径。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                projectProtectionPaths.take(8).forEach { projectPath ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f), RoundedCornerShape(16.dp))
+                            .padding(12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(projectPath, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                        OutlinedButton(onClick = { onRemoveProjectProtectionPath(projectPath) }) { Text("移除") }
+                    }
+                }
+            }
             Spacer(Modifier.height(8.dp))
             Text("当前主题：${themeMode.label}", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -472,7 +932,22 @@ fun RuleForgePage(
 }
 
 @Composable
-private fun CandidateRow(candidate: com.depjanitor.core.model.CleanupCandidate) {
+private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f), RoundedCornerShape(16.dp))
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label)
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun CandidateRow(candidate: CleanupCandidate) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -488,6 +963,46 @@ private fun CandidateRow(candidate: com.depjanitor.core.model.CleanupCandidate) 
         Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Badge(candidate.riskLevel.label, colorForRisk(candidate.riskLevel))
             Text(formatBytes(candidate.sizeBytes))
+        }
+    }
+}
+
+@Composable
+private fun CandidateSelectionRow(
+    candidate: CleanupCandidate,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    onOpenPath: ((String) -> Unit)? = null,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.26f), RoundedCornerShape(18.dp))
+            .padding(14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(
+            modifier = Modifier.weight(1f),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Checkbox(checked = checked, onCheckedChange = onCheckedChange)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(candidate.coordinate, fontWeight = FontWeight.SemiBold)
+                Text(candidate.reason, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+                Text(candidate.timeBasis.displayLabel(candidate.timeBasisFallback), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Badge(candidate.riskLevel.label, colorForRisk(candidate.riskLevel))
+            Text(formatBytes(candidate.sizeBytes))
+            if (onOpenPath != null) {
+                OutlinedButton(
+                    onClick = { candidate.path?.let(onOpenPath) },
+                    enabled = candidate.path != null,
+                ) { Text("查看路径") }
+            }
         }
     }
 }
@@ -532,6 +1047,34 @@ private fun EditablePathRow(
 }
 
 @Composable
+private fun CustomScanPathRow(
+    entry: CustomScanPath,
+    onToggleEnabled: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.26f), RoundedCornerShape(18.dp))
+            .padding(14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(entry.kind.label, fontWeight = FontWeight.SemiBold)
+                Badge(if (entry.enabled) "已启用" else "已停用", if (entry.enabled) MaterialTheme.semanticColors.safe else MaterialTheme.semanticColors.warn)
+            }
+            Text(entry.path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Switch(checked = entry.enabled, onCheckedChange = { onToggleEnabled() })
+            OutlinedButton(onClick = onRemove) { Text("移除") }
+        }
+    }
+}
+
+@Composable
 private fun PathRow(path: DetectedPath) {
     Row(
         modifier = Modifier
@@ -567,5 +1110,64 @@ private fun colorForRisk(level: RiskLevel): Color = when (level) {
     RiskLevel.PROTECTED -> MaterialTheme.semanticColors.protect
 }
 
+private data class CleanupPriorityMetrics(
+    val priorityScore: Int,
+    val reclaimableBytes: Long,
+    val staleCandidateCount: Int,
+    val hasActionableCandidate: Boolean,
+    val label: String,
+)
+
+private fun cleanupPriorityMetrics(
+    entry: ArtifactScanEntry,
+    candidatesByCoordinate: Map<String, List<CleanupCandidate>>,
+): CleanupPriorityMetrics {
+    val actionableCandidates = candidatesByCoordinate[entry.coordinate].orEmpty().filter(::isActionableCandidate)
+    if (actionableCandidates.isEmpty()) {
+        return CleanupPriorityMetrics(
+            priorityScore = Int.MIN_VALUE,
+            reclaimableBytes = 0L,
+            staleCandidateCount = 0,
+            hasActionableCandidate = false,
+            label = "暂无可执行候选",
+        )
+    }
+
+    val bestRiskRank = actionableCandidates.maxOf(::cleanabilityRank)
+    val defaultSelectedCount = actionableCandidates.count { it.defaultSelected }
+    val reclaimableBytes = actionableCandidates.sumOf { it.sizeBytes }
+    val staleCandidateCount = actionableCandidates.size
+    val priorityScore = defaultSelectedCount * 10_000 +
+        bestRiskRank * 1_000 +
+        staleCandidateCount * 100 +
+        actionableCandidates.maxOf { (it.sizeBytes / (32L * 1024L * 1024L)).coerceAtMost(99L) }.toInt()
+
+    val label = when {
+        defaultSelectedCount > 0 && bestRiskRank >= cleanabilityRank(RiskLevel.LOW) -> "高：低风险高收益，适合优先处理"
+        bestRiskRank >= cleanabilityRank(RiskLevel.MEDIUM) -> "中：建议复核后处理"
+        else -> "低：高风险或收益有限"
+    }
+
+    return CleanupPriorityMetrics(
+        priorityScore = priorityScore,
+        reclaimableBytes = reclaimableBytes,
+        staleCandidateCount = staleCandidateCount,
+        hasActionableCandidate = true,
+        label = label,
+    )
+}
+
+private fun isActionableCandidate(candidate: CleanupCandidate): Boolean {
+    return candidate.path != null && candidate.riskLevel != RiskLevel.PROTECTED
+}
+
+private fun cleanabilityRank(candidate: CleanupCandidate): Int = cleanabilityRank(candidate.riskLevel)
+
+private fun cleanabilityRank(level: RiskLevel): Int = when (level) {
+    RiskLevel.LOW -> 4
+    RiskLevel.MEDIUM -> 3
+    RiskLevel.HIGH -> 2
+    RiskLevel.PROTECTED -> 1
+}
 
 private fun safeProgress(value: Long, total: Long): Float = if (total <= 0L) 0f else value.toFloat() / total.toFloat()

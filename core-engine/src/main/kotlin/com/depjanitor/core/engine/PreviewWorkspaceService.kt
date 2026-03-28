@@ -8,11 +8,15 @@ import com.depjanitor.core.model.CleanupCandidate
 import com.depjanitor.core.model.CleanupRuleSet
 import com.depjanitor.core.model.DashboardSnapshot
 import com.depjanitor.core.model.DetectedPath
+import com.depjanitor.core.model.DuplicateVersionEntry
 import com.depjanitor.core.model.HotspotEntry
 import com.depjanitor.core.model.RecipePreview
 import com.depjanitor.core.model.RiskLevel
 import com.depjanitor.core.model.SimulationPreview
+import com.depjanitor.core.model.VersionDistributionEntry
+import com.depjanitor.core.model.WhitelistEntry
 import com.depjanitor.core.model.WorkspaceMetrics
+import com.depjanitor.core.model.WrapperDistributionEntry
 
 class PreviewWorkspaceService {
 
@@ -21,9 +25,13 @@ class PreviewWorkspaceService {
         metrics: WorkspaceMetrics? = null,
         artifactEntries: List<ArtifactScanEntry> = emptyList(),
         ruleSet: CleanupRuleSet = CleanupRuleSet(),
+        whitelistEntries: List<WhitelistEntry> = emptyList(),
+        projectProtectionPaths: List<String> = emptyList(),
+        protectedCoordinates: Set<String> = emptySet(),
         candidates: List<CleanupCandidate> = emptyList(),
         recipes: List<RecipePreview> = emptyList(),
         simulation: SimulationPreview? = null,
+        scannedAtMillis: Long = System.currentTimeMillis(),
     ): DashboardSnapshot {
         val previewMode = metrics == null && artifactEntries.isEmpty() && candidates.isEmpty()
         val previewMavenBytes = gb(34.1)
@@ -34,6 +42,34 @@ class PreviewWorkspaceService {
         val gradleBytes = metrics?.gradleBytes ?: previewGradleBytes
         val wrapperBytes = metrics?.wrapperBytes ?: previewWrapperBytes
         val hotspots = metrics?.hotspots?.takeIf { it.isNotEmpty() } ?: previewHotspots()
+        val duplicateVersionRankings = artifactEntries.takeIf { it.isNotEmpty() }
+            ?.map { entry ->
+                DuplicateVersionEntry(
+                    coordinate = entry.coordinate,
+                    source = entry.source,
+                    versionCount = entry.versions.size,
+                    staleVersionCount = entry.versions.count { it.riskLevel == RiskLevel.MEDIUM || it.riskLevel == RiskLevel.HIGH },
+                    totalSizeBytes = entry.totalSizeBytes,
+                )
+            }
+            ?.sortedWith(compareByDescending<DuplicateVersionEntry> { it.versionCount }.thenByDescending { it.totalSizeBytes })
+            ?.take(6)
+            ?: previewDuplicateVersionRankings()
+        val oldVersionDistributions = artifactEntries.takeIf { it.isNotEmpty() }
+            ?.let(::buildOldVersionDistributions)
+            ?.takeIf { it.isNotEmpty() }
+            ?: previewOldVersionDistributions()
+        val wrapperDistributions = artifactEntries.filter { it.source == ArtifactSource.WRAPPER }
+            .takeIf { it.isNotEmpty() }
+            ?.map { entry ->
+                WrapperDistributionEntry(
+                    label = entry.versions.firstOrNull()?.label ?: entry.coordinate,
+                    sizeBytes = entry.totalSizeBytes,
+                    lastModifiedMillis = entry.lastModifiedMillis,
+                )
+            }
+            ?.sortedByDescending { it.sizeBytes }
+            ?: previewWrapperDistributions()
         val strata = artifactEntries.takeIf { it.isNotEmpty() }?.take(6)?.map { it.toStrataPreview() } ?: previewStrata()
         val lowRiskCount = if (candidates.isNotEmpty()) candidates.count { it.riskLevel == RiskLevel.LOW } else artifactEntries.sumOf { entry -> entry.versions.count { it.riskLevel == null || it.riskLevel == RiskLevel.LOW } }.takeIf { it > 0 } ?: 128
         val mediumRiskCount = if (candidates.isNotEmpty()) candidates.count { it.riskLevel == RiskLevel.MEDIUM } else artifactEntries.sumOf { entry -> entry.versions.count { it.riskLevel == RiskLevel.MEDIUM } }.takeIf { it > 0 } ?: 46
@@ -56,6 +92,7 @@ class PreviewWorkspaceService {
         }
 
         return DashboardSnapshot(
+            scannedAtMillis = scannedAtMillis,
             totalBytes = totalBytes,
             mavenBytes = mavenBytes,
             gradleBytes = gradleBytes + wrapperBytes,
@@ -64,10 +101,16 @@ class PreviewWorkspaceService {
             mediumRiskCount = mediumRiskCount,
             highRiskCount = highRiskCount,
             hotspots = hotspots,
+            duplicateVersionRankings = duplicateVersionRankings,
+            oldVersionDistributions = oldVersionDistributions,
+            wrapperDistributions = wrapperDistributions,
             strata = strata,
             recipes = recipePreviews,
             simulation = simulationPreview,
             ruleSet = ruleSet,
+            whitelistEntries = whitelistEntries,
+            projectProtectionPaths = projectProtectionPaths,
+            protectedCoordinates = protectedCoordinates,
             candidates = candidates,
             detectedPaths = detectedPaths,
             artifactEntries = artifactEntries,
@@ -95,6 +138,49 @@ class PreviewWorkspaceService {
         HotspotEntry("gradle/wrapper/dists", ArtifactSource.WRAPPER, gb(9.7)),
         HotspotEntry(".m2/repository/org", ArtifactSource.MAVEN, gb(7.1)),
     )
+
+    private fun previewDuplicateVersionRankings(): List<DuplicateVersionEntry> = listOf(
+        DuplicateVersionEntry("org.slf4j:slf4j-api", ArtifactSource.MAVEN, 4, 2, gb(1.4)),
+        DuplicateVersionEntry("ch.qos.logback:logback-classic", ArtifactSource.MAVEN, 3, 1, gb(1.1)),
+        DuplicateVersionEntry("gradle-wrapper:gradle-7.6-bin", ArtifactSource.WRAPPER, 3, 2, gb(1.8)),
+    )
+
+    private fun previewOldVersionDistributions(): List<VersionDistributionEntry> = listOf(
+        VersionDistributionEntry("1 个旧版本", 34, gb(6.8)),
+        VersionDistributionEntry("2-3 个旧版本", 19, gb(9.4)),
+        VersionDistributionEntry("4+ 个旧版本", 7, gb(12.2)),
+    )
+
+    private fun previewWrapperDistributions(): List<WrapperDistributionEntry> = listOf(
+        WrapperDistributionEntry("gradle-8.7-bin", gb(1.2), System.currentTimeMillis()),
+        WrapperDistributionEntry("gradle-7.6-bin", gb(0.9), System.currentTimeMillis() - 86_400_000L),
+        WrapperDistributionEntry("gradle-6.9-bin", gb(0.6), System.currentTimeMillis() - 172_800_000L),
+    )
+
+    private fun buildOldVersionDistributions(artifactEntries: List<ArtifactScanEntry>): List<VersionDistributionEntry> {
+        val buckets = linkedMapOf(
+            "1 个旧版本" to mutableListOf<ArtifactScanEntry>(),
+            "2-3 个旧版本" to mutableListOf(),
+            "4+ 个旧版本" to mutableListOf(),
+        )
+        artifactEntries.filter { it.source == ArtifactSource.MAVEN }.forEach { entry ->
+            val staleVersionCount = entry.versions.count { it.riskLevel == RiskLevel.MEDIUM || it.riskLevel == RiskLevel.HIGH }
+            when {
+                staleVersionCount == 1 -> buckets.getValue("1 个旧版本") += entry
+                staleVersionCount in 2..3 -> buckets.getValue("2-3 个旧版本") += entry
+                staleVersionCount >= 4 -> buckets.getValue("4+ 个旧版本") += entry
+            }
+        }
+        return buckets.mapNotNull { (label, entries) ->
+            entries.takeIf { it.isNotEmpty() }?.let {
+                VersionDistributionEntry(
+                    label = label,
+                    artifactCount = it.size,
+                    totalSizeBytes = it.sumOf { item -> item.totalSizeBytes },
+                )
+            }
+        }
+    }
 
     private fun previewStrata(): List<ArtifactStrataPreview> = listOf(
         ArtifactStrataPreview(

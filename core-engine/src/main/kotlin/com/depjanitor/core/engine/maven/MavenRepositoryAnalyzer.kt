@@ -1,5 +1,6 @@
 package com.depjanitor.core.engine.maven
 
+import com.depjanitor.core.engine.time.UsageTimeResolver
 import com.depjanitor.core.model.ArtifactScanEntry
 import com.depjanitor.core.model.ArtifactSource
 import com.depjanitor.core.model.RiskLevel
@@ -7,7 +8,6 @@ import com.depjanitor.core.model.VersionScanEntry
 import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.attribute.FileTime
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
 import kotlin.io.path.name
@@ -32,23 +32,31 @@ class MavenRepositoryAnalyzer {
             val sortedVersions = versionDirectories.sortedByDescending { versionScore(it.name) }
             val layers = sortedVersions.mapIndexed { index, versionDir ->
                 val keep = index < 2
+                val usageTime = UsageTimeResolver.resolve(versionDir)
                 VersionScanEntry(
                     label = versionDir.name,
                     sizeBytes = directorySize(versionDir),
-                    lastModifiedMillis = directoryLastModified(versionDir),
+                    lastModifiedMillis = usageTime.millis,
+                    timeBasis = usageTime.basis,
+                    timeBasisFallback = usageTime.isFallback,
                     source = ArtifactSource.MAVEN,
+                    path = versionDir.toString(),
                     riskLevel = if (keep) null else RiskLevel.MEDIUM,
                     state = if (keep) "keep" else "candidate",
                 )
             }
+            val latestLayer = layers.maxByOrNull { it.lastModifiedMillis }
             listOf(
                 ArtifactScanEntry(
                     coordinate = coordinate,
                     source = ArtifactSource.MAVEN,
                     group = group.ifBlank { null },
                     artifact = artifact,
+                    path = current.toString(),
                     totalSizeBytes = layers.sumOf { it.sizeBytes },
-                    lastModifiedMillis = layers.maxOfOrNull { it.lastModifiedMillis } ?: 0L,
+                    lastModifiedMillis = latestLayer?.lastModifiedMillis ?: 0L,
+                    timeBasis = latestLayer?.timeBasis ?: com.depjanitor.core.model.TimeBasis.UNKNOWN,
+                    timeBasisFallback = latestLayer?.timeBasisFallback ?: true,
                     versions = layers,
                 ),
             )
@@ -78,17 +86,6 @@ class MavenRepositoryAnalyzer {
     private fun directorySize(path: Path): Long = try {
         Files.walk(path).use { walk ->
             walk.filter { Files.isRegularFile(it) }.mapToLong { Files.size(it) }.sum()
-        }
-    } catch (_: IOException) {
-        0L
-    }
-
-    private fun directoryLastModified(path: Path): Long = try {
-        Files.walk(path).use { walk ->
-            walk.filter { Files.isRegularFile(it) }
-                .map { Files.getLastModifiedTime(it) }
-                .max(compareBy<FileTime> { it.toMillis() })
-                .orElse(null)?.toMillis() ?: 0L
         }
     } catch (_: IOException) {
         0L

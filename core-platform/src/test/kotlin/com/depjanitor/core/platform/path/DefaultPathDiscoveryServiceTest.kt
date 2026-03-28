@@ -1,5 +1,6 @@
 package com.depjanitor.core.platform.path
 
+import com.depjanitor.core.model.CustomScanPath
 import com.depjanitor.core.model.PathKind
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -47,5 +48,21 @@ class DefaultPathDiscoveryServiceTest {
         val overridden = paths.first { it.kind == PathKind.MAVEN_REPOSITORY }
         assertEquals("/custom/m2/repository", overridden.path)
         assertFalse(overridden.autoDetected)
+    }
+
+    @Test
+    fun `should include enabled custom scan paths and skip disabled ones`() {
+        val paths = service.discover(
+            osName = "Mac OS X",
+            userHome = "/Users/ankanghao",
+            env = emptyMap(),
+            customScanPaths = listOf(
+                CustomScanPath(PathKind.MAVEN_REPOSITORY, "/Volumes/extra/m2", enabled = true),
+                CustomScanPath(PathKind.GRADLE_CACHES, "/Volumes/extra/gradle", enabled = false),
+            ),
+        )
+
+        assertEquals(true, paths.any { it.kind == PathKind.MAVEN_REPOSITORY && it.path == "/Volumes/extra/m2" })
+        assertEquals(false, paths.any { it.kind == PathKind.GRADLE_CACHES && it.path == "/Volumes/extra/gradle" })
     }
 }

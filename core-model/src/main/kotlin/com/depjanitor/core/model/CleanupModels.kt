@@ -28,7 +28,59 @@ data class CleanupCandidate(
     val riskLevel: RiskLevel,
     val sizeBytes: Long,
     val lastModifiedMillis: Long,
+    val timeBasis: TimeBasis = TimeBasis.LAST_MODIFIED,
+    val timeBasisFallback: Boolean = false,
     val reason: String,
     val path: String? = null,
     val defaultSelected: Boolean = false,
 )
+
+enum class CleanupExecutionMode(val label: String) {
+    MOVE_TO_TRASH("移入回收站"),
+    DELETE_DIRECTLY("直接删除"),
+}
+
+data class CleanupExecutionItem(
+    val candidateId: String,
+    val coordinate: String,
+    val path: String,
+    val source: ArtifactSource,
+    val riskLevel: RiskLevel,
+    val sizeBytes: Long,
+)
+
+data class CleanupExecutionPlan(
+    val items: List<CleanupExecutionItem>,
+    val mode: CleanupExecutionMode,
+)
+
+enum class CleanupExecutionStatus(val label: String) {
+    TRASHED("已移入回收站"),
+    DELETED("已删除"),
+    SKIPPED("已跳过"),
+    FAILED("失败"),
+}
+
+data class CleanupExecutionEntry(
+    val item: CleanupExecutionItem,
+    val status: CleanupExecutionStatus,
+    val message: String? = null,
+)
+
+data class CleanupExecutionResult(
+    val mode: CleanupExecutionMode,
+    val entries: List<CleanupExecutionEntry>,
+)
+
+val CleanupExecutionResult.successCount: Int
+    get() = entries.count { it.status == CleanupExecutionStatus.TRASHED || it.status == CleanupExecutionStatus.DELETED }
+
+val CleanupExecutionResult.failureCount: Int
+    get() = entries.count { it.status == CleanupExecutionStatus.FAILED }
+
+val CleanupExecutionResult.skippedCount: Int
+    get() = entries.count { it.status == CleanupExecutionStatus.SKIPPED }
+
+val CleanupExecutionResult.releasedBytes: Long
+    get() = entries.filter { it.status == CleanupExecutionStatus.TRASHED || it.status == CleanupExecutionStatus.DELETED }
+        .sumOf { it.item.sizeBytes }
