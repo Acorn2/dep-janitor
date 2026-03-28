@@ -28,6 +28,20 @@ compose.desktop {
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Exe,
                 org.jetbrains.compose.desktop.application.dsl.TargetFormat.Msi,
             )
+
+            val macIcon = project.file("src/main/resources/icons/macos/dep-janitor.icns")
+            if (macIcon.exists()) {
+                macOS {
+                    iconFile.set(macIcon)
+                }
+            }
+
+            val windowsIcon = project.file("src/main/resources/icons/windows/dep-janitor.ico")
+            if (windowsIcon.exists()) {
+                windows {
+                    iconFile.set(windowsIcon)
+                }
+            }
         }
     }
 }

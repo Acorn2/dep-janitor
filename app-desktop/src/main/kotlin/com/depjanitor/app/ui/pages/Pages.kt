@@ -62,7 +62,7 @@ fun ObservatoryPage(snapshot: DashboardSnapshot, isScanning: Boolean, statusText
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
             PanelCard(
-                title = "Analysis Chamber",
+                title = "主分析舱",
                 subtitle = "用主分析舱取代普通 KPI 四卡片。",
                 modifier = Modifier.weight(1.4f),
             ) {
@@ -72,7 +72,7 @@ fun ObservatoryPage(snapshot: DashboardSnapshot, isScanning: Boolean, statusText
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    if (snapshot.reclaimableBytes > 0L) "当前已完成真实扫描，预计最多可释放 ${formatBytes(snapshot.reclaimableBytes)}。" else "当前已完成真实路径扫描；策略估算将在后续 Sprint 接入。",
+                    if (snapshot.reclaimableBytes > 0L) "当前已完成真实扫描，预计最多可释放 ${formatBytes(snapshot.reclaimableBytes)}。" else "当前已完成真实路径扫描；策略估算将在后续阶段接入。",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -82,7 +82,7 @@ fun ObservatoryPage(snapshot: DashboardSnapshot, isScanning: Boolean, statusText
                 }
             }
             PanelCard(
-                title = "Simulation Core",
+                title = "预演核心",
                 subtitle = "先预演再清理。",
                 modifier = Modifier.weight(1f),
             ) {
@@ -99,7 +99,7 @@ fun ObservatoryPage(snapshot: DashboardSnapshot, isScanning: Boolean, statusText
                     contentAlignment = Alignment.Center,
                 ) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("Safe-first Simulation", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("安全优先预演", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(formatBytes(snapshot.simulation.releasableBytes), fontSize = 38.sp, fontWeight = FontWeight.SemiBold)
                         Text("已选 ${snapshot.simulation.selectedItemCount} 项，保护规则 ${snapshot.simulation.protectedRuleCount} 条")
                     }
@@ -107,20 +107,20 @@ fun ObservatoryPage(snapshot: DashboardSnapshot, isScanning: Boolean, statusText
             }
         }
 
-        PanelCard(title = "扫描状态", subtitle = "Sprint 1 已接入真实目录扫描。") {
+        PanelCard(title = "扫描状态", subtitle = "第一阶段已接入真实目录扫描。") {
             Badge(if (isScanning) "正在扫描" else "扫描完成", if (isScanning) MaterialTheme.semanticColors.warn else MaterialTheme.semanticColors.safe)
             Text(statusText, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("最近扫描：${formatTimestamp(snapshot.scannedAtMillis)}", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
         }
 
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            PanelCard(title = "来源结构", subtitle = "Maven / Gradle / 风险语义保持统一", modifier = Modifier.weight(1f)) {
+            PanelCard(title = "来源结构", subtitle = "Maven / Gradle 的来源语义与风险语义保持统一", modifier = Modifier.weight(1f)) {
                 GradientBar("Maven", formatBytes(snapshot.mavenBytes), safeProgress(snapshot.mavenBytes, snapshot.totalBytes), listOf(MaterialTheme.semanticColors.maven.copy(alpha = 0.35f), MaterialTheme.semanticColors.maven))
                 GradientBar("Gradle", formatBytes(snapshot.gradleBytes), safeProgress(snapshot.gradleBytes, snapshot.totalBytes), listOf(MaterialTheme.semanticColors.gradle.copy(alpha = 0.35f), MaterialTheme.semanticColors.gradle))
                 GradientBar("低风险项", snapshot.lowRiskCount.toString(), safeProgress(snapshot.lowRiskCount.toLong(), 128L), listOf(MaterialTheme.semanticColors.safe.copy(alpha = 0.35f), MaterialTheme.semanticColors.safe))
                 GradientBar("中风险项", snapshot.mediumRiskCount.toString(), safeProgress(snapshot.mediumRiskCount.toLong(), 128L), listOf(MaterialTheme.semanticColors.warn.copy(alpha = 0.35f), MaterialTheme.semanticColors.warn))
             }
-            PanelCard(title = "自动发现路径", subtitle = "Sprint 1 会把这些路径接入真实扫描。", modifier = Modifier.weight(1f)) {
+            PanelCard(title = "自动发现路径", subtitle = "第一阶段会把这些路径接入真实扫描。", modifier = Modifier.weight(1f)) {
                 snapshot.detectedPaths.forEach { path ->
                     PathRow(path)
                 }
@@ -176,7 +176,7 @@ fun ObservatoryPage(snapshot: DashboardSnapshot, isScanning: Boolean, statusText
             }
         }
 
-        PanelCard(title = "Artifact Strata", subtitle = "依赖地层视图已经进入桌面壳。") {
+        PanelCard(title = "依赖地层", subtitle = "依赖地层视图已经进入桌面壳。") {
             snapshot.strata.forEach { strata ->
                 Column(
                     modifier = Modifier
@@ -311,21 +311,21 @@ fun ArtifactAtlasPage(
     val pendingRelatedCount = relatedCandidateIds.size - selectedRelatedIds.size
 
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-        PanelCard(title = "Sources", subtitle = "已接入真实 Maven / Gradle 解析结果。", modifier = Modifier.weight(0.9f)) {
+        PanelCard(title = "来源结构", subtitle = "已接入真实 Maven / Gradle 解析结果。", modifier = Modifier.weight(0.9f)) {
             snapshot.detectedPaths.forEach {
                 Badge(it.kind.label, colorForSource(it.kind))
             }
             Spacer(Modifier.height(8.dp))
             Badge("Maven ${entries.count { it.source == ArtifactSource.MAVEN }}", MaterialTheme.semanticColors.maven)
             Badge("Gradle ${entries.count { it.source == ArtifactSource.GRADLE }}", MaterialTheme.semanticColors.gradle)
-            Badge("Wrapper ${entries.count { it.source == ArtifactSource.WRAPPER }}", MaterialTheme.semanticColors.wrapper)
+            Badge("Gradle Wrapper ${entries.count { it.source == ArtifactSource.WRAPPER }}", MaterialTheme.semanticColors.wrapper)
             Spacer(Modifier.height(8.dp))
             Text("来源过滤", color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterBadge("全部", selectedSource == null) { selectedSource = null }
                 FilterBadge("Maven", selectedSource == ArtifactSource.MAVEN) { selectedSource = ArtifactSource.MAVEN }
                 FilterBadge("Gradle", selectedSource == ArtifactSource.GRADLE) { selectedSource = ArtifactSource.GRADLE }
-                FilterBadge("Wrapper", selectedSource == ArtifactSource.WRAPPER) { selectedSource = ArtifactSource.WRAPPER }
+                FilterBadge("Gradle Wrapper", selectedSource == ArtifactSource.WRAPPER) { selectedSource = ArtifactSource.WRAPPER }
             }
             Spacer(Modifier.height(8.dp))
             Text("风险过滤", color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -348,7 +348,7 @@ fun ArtifactAtlasPage(
                 Text("• ${item.label} · ${formatBytes(item.sizeBytes)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        PanelCard(title = "Artifact Rows", subtitle = "支持搜索、筛选与排序。", modifier = Modifier.weight(1.35f)) {
+        PanelCard(title = "结果列表", subtitle = "支持搜索、筛选与排序。", modifier = Modifier.weight(1.35f)) {
             OutlinedTextField(
                 value = query,
                 onValueChange = { query = it },
@@ -378,7 +378,7 @@ fun ArtifactAtlasPage(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(entry.coordinate, fontWeight = FontWeight.SemiBold)
-                            Text("${entry.versionCount} versions · ${entry.source.label} · ${entry.primaryRiskLevel.label}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text("${entry.versionCount} 个版本 · ${entry.source.label} · ${entry.primaryRiskLevel.label}", color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text(formatBytes(entry.totalSizeBytes))
@@ -389,7 +389,7 @@ fun ArtifactAtlasPage(
                 }
             }
         }
-        PanelCard(title = "Version Detail", subtitle = "展示选中结果的版本层与大小信息。", modifier = Modifier.weight(1f)) {
+        PanelCard(title = "版本详情", subtitle = "展示选中结果的版本层与大小信息。", modifier = Modifier.weight(1f)) {
             if (selected == null) {
                 Text("暂无可展示的 artifact 结果", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
@@ -481,7 +481,7 @@ fun CleanupRecipesPage(
     onOpenPath: (String) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        PanelCard(title = "Rule Snapshot", subtitle = "当前清理建议由默认规则集生成。") {
+        PanelCard(title = "规则快照", subtitle = "当前清理建议由默认规则集生成。") {
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 MetricPill("保留版本", "${snapshot.ruleSet.retainLatestVersions}")
                 MetricPill("未使用阈值", "${snapshot.ruleSet.unusedDaysThreshold} 天")
@@ -505,7 +505,7 @@ fun CleanupRecipesPage(
                 }
             }
         }
-        PanelCard(title = "Candidate Ledger", subtitle = "按风险与大小排序的候选清单。") {
+        PanelCard(title = "候选清单", subtitle = "按风险与大小排序的候选清单。") {
             if (snapshot.candidates.isEmpty()) {
                 Text("当前没有识别到可清理候选项。", color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
@@ -595,12 +595,12 @@ fun SimulationPage(
 
     Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            PanelCard(title = "Before", subtitle = "当前缓存结构", modifier = Modifier.weight(1f)) {
+            PanelCard(title = "清理前", subtitle = "当前缓存结构", modifier = Modifier.weight(1f)) {
                 MetricPill("总缓存", formatBytes(snapshot.totalBytes))
                 MetricPill("总候选", snapshot.candidates.size.toString())
                 MetricPill("保护项", snapshot.simulation.protectedRuleCount.toString())
             }
-            PanelCard(title = "After", subtitle = "默认方案预演结果", modifier = Modifier.weight(1f)) {
+            PanelCard(title = "清理后", subtitle = "默认方案预演结果", modifier = Modifier.weight(1f)) {
                 MetricPill("默认释放", formatBytes(selectedCandidates.sumOf { it.sizeBytes }))
                 MetricPill("已选项目", selectedCandidateIds.size.toString())
                 MetricPill("高风险复核", selectedHighRiskCount.toString())
@@ -615,9 +615,9 @@ fun SimulationPage(
             }
         }
         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-            PanelCard(title = "Ready Now", subtitle = "默认勾选的低风险候选。", modifier = Modifier.weight(1f)) {
+            PanelCard(title = "可直接执行", subtitle = "默认勾选的低风险候选。", modifier = Modifier.weight(1f)) {
                 if (readyCandidates.isEmpty()) {
-                    Text("当前没有自动加入方案的低风险项。", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("当前没有自动加入方案的低风险候选。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     readyCandidates.take(8).forEach { candidate ->
                         CandidateSelectionRow(
@@ -629,7 +629,7 @@ fun SimulationPage(
                     }
                 }
             }
-            PanelCard(title = "Needs Review", subtitle = "需人工确认的中高风险项。", modifier = Modifier.weight(1f)) {
+            PanelCard(title = "待人工复核", subtitle = "需人工确认的中高风险项。", modifier = Modifier.weight(1f)) {
                 if (reviewCandidates.isEmpty()) {
                     Text("当前没有待复核项。", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
@@ -646,7 +646,7 @@ fun SimulationPage(
         }
 
         lastCleanupResult?.let { result ->
-            PanelCard(title = "Execution Result", subtitle = "展示最近一次清理执行结果。") {
+            PanelCard(title = "执行结果", subtitle = "展示最近一次清理执行结果。") {
                 MetricPill("成功", result.successCount.toString())
                 MetricPill("失败", result.failureCount.toString())
                 MetricPill("跳过", result.skippedCount.toString())
@@ -761,7 +761,7 @@ fun RuleForgePage(
     }
 
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-        PanelCard(title = "Path Discovery", subtitle = "路径管理已支持自定义覆盖并参与下一次扫描。", modifier = Modifier.weight(1.2f)) {
+        PanelCard(title = "路径发现", subtitle = "路径管理已支持自定义覆盖并参与下一次扫描。", modifier = Modifier.weight(1.2f)) {
             defaultPathRows.forEach { detectedPath ->
                 EditablePathRow(
                     path = detectedPath,
@@ -806,7 +806,7 @@ fun RuleForgePage(
                 }
             }
         }
-        PanelCard(title = "Rule Forge", subtitle = "把规则从展示态升级为真实可编辑配置。", modifier = Modifier.weight(1f)) {
+        PanelCard(title = "规则工坊", subtitle = "把规则从展示态升级为真实可编辑配置。", modifier = Modifier.weight(1f)) {
             OutlinedTextField(
                 value = retainVersionsInput,
                 onValueChange = { retainVersionsInput = it.filter(Char::isDigit) },

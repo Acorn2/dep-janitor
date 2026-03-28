@@ -20,8 +20,8 @@ private val ObsidianColors = darkColorScheme(
     surfaceVariant = Color(0xFF232833),
     onBackground = Color(0xFFEEF1F6),
     onSurface = Color(0xFFEEF1F6),
-    onSurfaceVariant = Color(0xFFA7AFBD),
-    outline = Color(0xFF2E3542),
+    onSurfaceVariant = Color(0xFFA8AFBD),
+    outline = Color(0xFF2F3745),
 )
 
 private val IvoryColors = lightColorScheme(
@@ -29,13 +29,13 @@ private val IvoryColors = lightColorScheme(
     onPrimary = Color(0xFFFFFFFF),
     secondary = Color(0xFF468F87),
     tertiary = Color(0xFFB96F3F),
-    background = Color(0xFFF4F1EA),
-    surface = Color(0xFFFFFCF7),
-    surfaceVariant = Color(0xFFF1ECE4),
+    background = Color(0xFFEFF2F6),
+    surface = Color(0xFFFFFFFF),
+    surfaceVariant = Color(0xFFF0F4F9),
     onBackground = Color(0xFF1F2430),
     onSurface = Color(0xFF1F2430),
-    onSurfaceVariant = Color(0xFF5E6573),
-    outline = Color(0xFFD8D0C4),
+    onSurfaceVariant = Color(0xFF5D6677),
+    outline = Color(0xFFD9E0EA),
 )
 
 @Immutable
@@ -58,7 +58,7 @@ private val ObsidianSemantics = SemanticColors(
     warn = Color(0xFFC79A56),
     danger = Color(0xFFB76579),
     protect = Color(0xFF7F8DA6),
-    canvasAlt = Color(0xFF20242C),
+    canvasAlt = Color(0xFF15181F),
 )
 
 private val IvorySemantics = SemanticColors(
@@ -69,7 +69,7 @@ private val IvorySemantics = SemanticColors(
     warn = Color(0xFFB78949),
     danger = Color(0xFFA55C6F),
     protect = Color(0xFF728099),
-    canvasAlt = Color(0xFFF7F2EA),
+    canvasAlt = Color(0xFFF6F8FB),
 )
 
 val LocalSemanticColors = staticCompositionLocalOf { ObsidianSemantics }
@@ -99,4 +99,4 @@ val MaterialTheme.semanticColors: SemanticColors
     get() = LocalSemanticColors.current
 
 val ColorScheme.panelBorder: Color
-    get() = outline.copy(alpha = 0.7f)
+    get() = outline.copy(alpha = 0.74f)
