@@ -11,6 +11,7 @@ out/
 .gradle/
 .kotlin/
 build/
+docs/
 **/build/
 
 # --- Logs / temp files ---

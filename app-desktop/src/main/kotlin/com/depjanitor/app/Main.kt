@@ -7,6 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
@@ -23,6 +24,7 @@ import com.depjanitor.core.model.CleanupExecutionItem
 import com.depjanitor.core.model.CleanupExecutionMode
 import com.depjanitor.core.model.CleanupExecutionPlan
 import com.depjanitor.core.model.CleanupExecutionResult
+import com.depjanitor.core.model.CleanupExecutionStatus
 import com.depjanitor.core.model.CleanupRuleSet
 import com.depjanitor.core.model.CustomScanPath
 import com.depjanitor.core.model.DashboardSnapshot
@@ -39,9 +41,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 fun main() = application {
+    val appIcon = painterResource("icons/runtime/dep-janitor-512.png")
     Window(
         onCloseRequest = ::exitApplication,
         title = "Dep Janitor",
+        icon = appIcon,
         state = WindowState(size = DpSize(1480.dp, 980.dp)),
     ) {
         DepJanitorApp()
@@ -90,6 +94,7 @@ private fun DepJanitorApp() {
                     ruleSet = cleanupRuleSet,
                     whitelistEntries = whitelistEntries,
                     projectProtectionPaths = projectProtectionPaths,
+                    scannedAtMillis = 0L,
                 ),
                 isScanning = false,
                 statusText = "已发现 ${detectedPaths.count { it.exists }} 个本地缓存路径，等待扫描。",
@@ -101,6 +106,7 @@ private fun DepJanitorApp() {
     var lastCleanupResult by remember { mutableStateOf<CleanupExecutionResult?>(null) }
     var selectedCandidateIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var hasInitializedExecutionPlan by remember { mutableStateOf(false) }
+    var hasUserTriggeredScan by remember { mutableStateOf(false) }
 
     fun persistSettings(
         nextThemeMode: ThemeMode = themeMode,
@@ -125,6 +131,7 @@ private fun DepJanitorApp() {
     }
 
     fun triggerScan() {
+        hasUserTriggeredScan = true
         scope.launch {
             uiState = uiState.copy(isScanning = true, statusText = "正在初始化扫描…")
             val currentPaths = resolveDetectedPaths()
@@ -155,10 +162,10 @@ private fun DepJanitorApp() {
         }
     }
 
-    fun executeCleanup(selectedCandidateIds: Set<String>, mode: CleanupExecutionMode) {
+    fun executeCleanup(targetCandidateIds: Set<String>, mode: CleanupExecutionMode) {
         scope.launch {
             val selectedItems = uiState.snapshot.candidates
-                .filter { it.id in selectedCandidateIds }
+                .filter { it.id in targetCandidateIds }
                 .mapNotNull { candidate ->
                     val path = candidate.path ?: return@mapNotNull null
                     CleanupExecutionItem(
@@ -171,12 +178,12 @@ private fun DepJanitorApp() {
                     )
                 }
             if (selectedItems.isEmpty()) {
-                uiState = uiState.copy(statusText = "没有可执行的清理项。")
+                uiState = uiState.copy(statusText = "没有可执行的删除项。")
                 return@launch
             }
 
             isCleaning = true
-            uiState = uiState.copy(statusText = "正在执行清理…")
+            uiState = uiState.copy(statusText = "正在执行删除…")
             val result = withContext(Dispatchers.IO) {
                 cleanupExecutionService.execute(
                     CleanupExecutionPlan(
@@ -187,8 +194,18 @@ private fun DepJanitorApp() {
             }
             lastCleanupResult = result
             isCleaning = false
+            val succeededCandidateIds = result.entries
+                .filter { it.status == CleanupExecutionStatus.TRASHED || it.status == CleanupExecutionStatus.DELETED }
+                .map { it.item.candidateId }
+                .toSet()
+            if (succeededCandidateIds.isNotEmpty()) {
+                selectedCandidateIds = selectedCandidateIds - succeededCandidateIds
+                uiState = uiState.copy(
+                    snapshot = uiState.snapshot.removeExecutedCandidates(result),
+                )
+            }
             uiState = uiState.copy(
-                statusText = "清理完成：成功 ${result.successCount} 项，释放 ${com.depjanitor.app.ui.formatBytes(result.releasedBytes)}。",
+                statusText = "删除完成：成功 ${result.successCount} 项，释放 ${com.depjanitor.app.ui.formatBytes(result.releasedBytes)}。",
             )
             triggerScan()
         }
@@ -236,7 +253,22 @@ private fun DepJanitorApp() {
     }
 
     LaunchedEffect(pathOverrides, customScanPaths, cleanupRuleSet, scanCustomPaths, whitelistEntries, projectProtectionPaths) {
-        triggerScan()
+        if (hasUserTriggeredScan) {
+            triggerScan()
+        } else {
+            val nextDetectedPaths = resolveDetectedPaths()
+            uiState = WorkspaceUiState(
+                snapshot = previewWorkspaceService.buildDashboard(
+                    detectedPaths = nextDetectedPaths,
+                    ruleSet = cleanupRuleSet,
+                    whitelistEntries = whitelistEntries,
+                    projectProtectionPaths = projectProtectionPaths,
+                    scannedAtMillis = 0L,
+                ),
+                isScanning = false,
+                statusText = "已发现 ${nextDetectedPaths.count { it.exists }} 个本地缓存路径，等待开始扫描。",
+            )
+        }
     }
 
     LaunchedEffect(uiState.snapshot.candidates) {
@@ -361,4 +393,33 @@ private fun DepJanitorApp() {
             },
         )
     }
+}
+
+private fun DashboardSnapshot.removeExecutedCandidates(result: CleanupExecutionResult): DashboardSnapshot {
+    val removedEntries = result.entries.filter {
+        it.status == CleanupExecutionStatus.TRASHED || it.status == CleanupExecutionStatus.DELETED
+    }
+    if (removedEntries.isEmpty()) return this
+
+    val removedIds = removedEntries.map { it.item.candidateId }.toSet()
+    val removedBytes = removedEntries.sumOf { it.item.sizeBytes }
+    val removedMavenBytes = removedEntries.filter { it.item.source == com.depjanitor.core.model.ArtifactSource.MAVEN }.sumOf { it.item.sizeBytes }
+    val removedGradleBytes = removedEntries.filter { it.item.source == com.depjanitor.core.model.ArtifactSource.GRADLE }.sumOf { it.item.sizeBytes }
+    val remainingCandidates = candidates.filterNot { it.id in removedIds }
+
+    return copy(
+        totalBytes = (totalBytes - removedBytes).coerceAtLeast(0L),
+        mavenBytes = (mavenBytes - removedMavenBytes).coerceAtLeast(0L),
+        gradleBytes = (gradleBytes - removedGradleBytes).coerceAtLeast(0L),
+        reclaimableBytes = (reclaimableBytes - removedBytes).coerceAtLeast(0L),
+        lowRiskCount = remainingCandidates.count { it.riskLevel == RiskLevel.LOW },
+        mediumRiskCount = remainingCandidates.count { it.riskLevel == RiskLevel.MEDIUM },
+        highRiskCount = remainingCandidates.count { it.riskLevel == RiskLevel.HIGH },
+        candidates = remainingCandidates,
+        simulation = simulation.copy(
+            releasableBytes = (simulation.releasableBytes - removedBytes).coerceAtLeast(0L),
+            selectedItemCount = remainingCandidates.count { it.defaultSelected },
+            highRiskCount = remainingCandidates.count { it.riskLevel == RiskLevel.HIGH },
+        ),
+    )
 }

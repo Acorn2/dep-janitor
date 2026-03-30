@@ -74,15 +74,17 @@ class WorkspaceCleanupAdvisorServiceTest {
         )
 
         assertTrue(candidates.any { it.kind == CleanupCandidateKind.LAST_UPDATED_RESIDUE && it.defaultSelected })
-        assertTrue(candidates.any { it.kind == CleanupCandidateKind.OLD_VERSION && it.coordinate == "org.example:demo" })
+        val oldVersion = candidates.first { it.kind == CleanupCandidateKind.OLD_VERSION && it.coordinate == "org.example:demo" }
+        assertEquals(RiskLevel.LOW, oldVersion.riskLevel)
+        assertEquals(true, oldVersion.defaultSelected)
         assertTrue(candidates.any { it.kind == CleanupCandidateKind.LEGACY_WRAPPER && it.riskLevel == RiskLevel.HIGH })
 
         val recipes = service.buildRecipes(candidates)
         assertTrue(recipes.any { it.title == "Residue Sweep" && it.defaultEnabled })
 
         val simulation = service.buildSimulation(candidates, artifactEntries, CleanupRuleSet())
-        assertEquals(1, simulation.selectedItemCount)
-        assertTrue(simulation.releasableBytes >= 12L)
+        assertEquals(2, simulation.selectedItemCount)
+        assertTrue(simulation.releasableBytes >= 112L)
         assertEquals(1, simulation.highRiskCount)
         assertEquals(3, simulation.protectedRuleCount)
     }
@@ -236,6 +238,48 @@ class WorkspaceCleanupAdvisorServiceTest {
 
         assertTrue(candidate.reason.contains("回退推断"))
         assertEquals(true, candidate.timeBasisFallback)
+    }
+
+    @Test
+    fun `should only default select stale maven old versions`() {
+        val nowMillis = 1_800_000_000_000L
+        val service = WorkspaceCleanupAdvisorService(nowMillis = nowMillis)
+        val staleMillis = nowMillis - 220L * 24L * 60L * 60L * 1_000L
+        val freshMillis = nowMillis - 7L * 24L * 60L * 60L * 1_000L
+
+        val artifactEntries = listOf(
+            ArtifactScanEntry(
+                coordinate = "org.example:demo",
+                source = ArtifactSource.MAVEN,
+                group = "org.example",
+                artifact = "demo",
+                totalSizeBytes = 460L,
+                lastModifiedMillis = nowMillis - 1_000L,
+                versions = listOf(
+                    VersionScanEntry("4.0.0", 160L, nowMillis - 1_000L, ArtifactSource.MAVEN),
+                    VersionScanEntry("3.0.0", 140L, nowMillis - 2_000L, ArtifactSource.MAVEN),
+                    VersionScanEntry("2.0.0", 90L, staleMillis, ArtifactSource.MAVEN, riskLevel = RiskLevel.MEDIUM, state = "candidate"),
+                    VersionScanEntry("1.0.0", 70L, freshMillis, ArtifactSource.MAVEN, riskLevel = RiskLevel.MEDIUM, state = "candidate"),
+                ),
+            ),
+        )
+
+        val candidates = service.analyzeCandidates(
+            detectedPaths = emptyList(),
+            artifactEntries = artifactEntries,
+            ruleSet = CleanupRuleSet(retainLatestVersions = 2, unusedDaysThreshold = 180, prioritizeLowRisk = true),
+        )
+
+        val staleCandidate = candidates.first { it.versionLabel == "2.0.0" }
+        val freshCandidate = candidates.first { it.versionLabel == "1.0.0" }
+
+        assertEquals(RiskLevel.LOW, staleCandidate.riskLevel)
+        assertEquals(true, staleCandidate.defaultSelected)
+        assertTrue(staleCandidate.reason.contains("可优先纳入批量清理"))
+
+        assertEquals(RiskLevel.MEDIUM, freshCandidate.riskLevel)
+        assertEquals(false, freshCandidate.defaultSelected)
+        assertTrue(freshCandidate.reason.contains("建议人工复核"))
     }
 
     @Test

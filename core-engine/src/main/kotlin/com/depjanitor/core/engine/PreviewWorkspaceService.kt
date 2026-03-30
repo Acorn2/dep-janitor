@@ -133,10 +133,10 @@ class PreviewWorkspaceService {
     }
 
     private fun previewHotspots(): List<HotspotEntry> = listOf(
-        HotspotEntry("gradle/caches/modules", ArtifactSource.GRADLE, gb(18.2)),
-        HotspotEntry(".m2/repository/com", ArtifactSource.MAVEN, gb(14.8)),
-        HotspotEntry("gradle/wrapper/dists", ArtifactSource.WRAPPER, gb(9.7)),
-        HotspotEntry(".m2/repository/org", ArtifactSource.MAVEN, gb(7.1)),
+        HotspotEntry("~/.gradle/caches/modules", ArtifactSource.GRADLE, gb(18.2), "~/.gradle/caches/modules"),
+        HotspotEntry("~/.m2/repository/com", ArtifactSource.MAVEN, gb(14.8), "~/.m2/repository/com"),
+        HotspotEntry("~/.gradle/wrapper/dists", ArtifactSource.WRAPPER, gb(9.7), "~/.gradle/wrapper/dists"),
+        HotspotEntry("~/.m2/repository/org", ArtifactSource.MAVEN, gb(7.1), "~/.m2/repository/org"),
     )
 
     private fun previewDuplicateVersionRankings(): List<DuplicateVersionEntry> = listOf(

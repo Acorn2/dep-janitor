@@ -52,7 +52,7 @@ class WorkspaceMetricsScanner {
                 PathKind.GRADLE_CACHES -> gradleBytes += rootSize
                 PathKind.GRADLE_WRAPPER -> wrapperBytes += rootSize
             }
-            hotspots += calculateHotspots(target.kind, root)
+            hotspots += calculateHotspots(root, target.kind)
         }
 
         onProgress(
@@ -72,29 +72,34 @@ class WorkspaceMetricsScanner {
         )
     }
 
-    private fun calculateHotspots(kind: PathKind, root: Path): List<HotspotEntry> {
+    private fun calculateHotspots(root: Path, kind: PathKind): List<HotspotEntry> {
         if (!root.exists() || !root.isDirectory()) return emptyList()
         return Files.list(root).use { children ->
             children
                 .filter { child -> child.name.isNotBlank() }
                 .map { child ->
                     HotspotEntry(
-                        name = buildHotspotName(kind, root, child),
+                        name = buildHotspotName(root, child),
                         source = kind.source,
                         sizeBytes = calculateSize(child),
+                        path = child.toString(),
                     )
                 }
                 .toList()
         }
     }
 
-    private fun buildHotspotName(kind: PathKind, root: Path, child: Path): String {
-        val rootLabel = when (kind) {
-            PathKind.MAVEN_REPOSITORY -> ".m2/repository"
-            PathKind.GRADLE_CACHES -> "gradle/caches"
-            PathKind.GRADLE_WRAPPER -> "gradle/wrapper"
+    private fun buildHotspotName(root: Path, child: Path): String {
+        val normalizedRoot = root.normalize().toString().replace('\\', '/')
+        val userHome = System.getProperty("user.home")?.replace('\\', '/').orEmpty().trimEnd('/')
+        val displayRoot = if (userHome.isNotBlank() && normalizedRoot == userHome) {
+            "~"
+        } else if (userHome.isNotBlank() && normalizedRoot.startsWith("$userHome/")) {
+            "~/${normalizedRoot.removePrefix("$userHome/")}"
+        } else {
+            normalizedRoot
         }
-        return "$rootLabel/${child.fileName}"
+        return "$displayRoot/${child.fileName}"
     }
 
     private fun calculateSize(path: Path): Long {

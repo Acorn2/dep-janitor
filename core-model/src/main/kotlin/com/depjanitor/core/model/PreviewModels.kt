@@ -4,6 +4,7 @@ data class HotspotEntry(
     val name: String,
     val source: ArtifactSource,
     val sizeBytes: Long,
+    val path: String? = null,
 )
 
 data class ArtifactStrataLayer(

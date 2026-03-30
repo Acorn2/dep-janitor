@@ -132,7 +132,7 @@ class WorkspaceCleanupAdvisorService(
                         source = ArtifactSource.MAVEN,
                         riskLevel = when {
                             kind == CleanupCandidateKind.STALE_SNAPSHOT -> RiskLevel.LOW
-                            stale -> RiskLevel.MEDIUM
+                            stale -> RiskLevel.LOW
                             else -> RiskLevel.MEDIUM
                         },
                         sizeBytes = version.sizeBytes,
@@ -143,9 +143,18 @@ class WorkspaceCleanupAdvisorService(
                         reason = buildString {
                             append("超出保留最近 ${ruleSet.retainLatestVersions} 个版本")
                             append("（依据：${version.timeBasis.displayLabel(version.timeBasisFallback)}）")
-                            if (stale) append("，且已超过 ${ruleSet.unusedDaysThreshold} 天未更新")
+                            if (stale) {
+                                append("，且已超过 ${ruleSet.unusedDaysThreshold} 天未更新")
+                                append("，可优先纳入批量清理")
+                            } else {
+                                append("，但近期仍有更新时间，建议人工复核")
+                            }
                         },
-                        defaultSelected = kind == CleanupCandidateKind.STALE_SNAPSHOT,
+                        defaultSelected = when {
+                            kind == CleanupCandidateKind.STALE_SNAPSHOT -> true
+                            stale -> ruleSet.prioritizeLowRisk
+                            else -> false
+                        },
                     )
                 }
             }

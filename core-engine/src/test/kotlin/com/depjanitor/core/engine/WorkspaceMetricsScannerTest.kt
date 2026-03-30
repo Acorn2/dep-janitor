@@ -51,5 +51,8 @@ class WorkspaceMetricsScannerTest {
         assertEquals(240L, result.totalBytes)
         assertTrue(result.hotspots.isNotEmpty())
         assertTrue(result.hotspots.first().sizeBytes >= result.hotspots.last().sizeBytes)
+        assertTrue(result.hotspots.any { it.name == "${maven.toString().replace('\\', '/')}/com" })
+        assertTrue(result.hotspots.any { it.name == "${gradleCaches.toString().replace('\\', '/')}/modules-2" })
+        assertTrue(result.hotspots.any { it.name == "${wrapper.toString().replace('\\', '/')}/dists" })
     }
 }
