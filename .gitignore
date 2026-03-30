@@ -1,11 +1,14 @@
 # --- OS / Editor ---
 .DS_Store
 Thumbs.db
+.AppleDouble
+.LSOverride
 
 # --- IntelliJ IDEA / JetBrains ---
 .idea/
 *.iml
 out/
+.vscode/
 
 # --- Gradle / Kotlin ---
 .gradle/
@@ -13,20 +16,32 @@ out/
 build/
 docs/
 **/build/
+**/.gradle/
+**/out/
 
 # --- Logs / temp files ---
 *.log
 *.tmp
 *.swp
 *.swo
+*.bak
+*.orig
 
 # --- Compose Desktop / packaging ---
 compose_compiler/
+tmp_icons/
 
 # --- Local runtime / test artifacts ---
 *.hprof
 hs_err_pid*
 replay_pid*
+
+# --- Local packaging artifacts (if exported outside build/) ---
+*.dmg
+*.pkg
+*.msi
+*.exe
+*.app
 
 # --- Optional local env files ---
 .env

@@ -21,14 +21,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AutoGraph
-import androidx.compose.material.icons.outlined.DarkMode
-import androidx.compose.material.icons.outlined.HomeWork
-import androidx.compose.material.icons.outlined.LightMode
-import androidx.compose.material.icons.outlined.PlayCircleOutline
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import com.depjanitor.app.ui.components.Badge
 import com.depjanitor.app.ui.components.MetricPill
 import com.depjanitor.app.ui.components.PanelCard
+import com.depjanitor.app.ui.icons.AppIcons
 import com.depjanitor.app.ui.formatBytes
 import com.depjanitor.app.ui.formatTimestamp
 import com.depjanitor.app.ui.pages.ArtifactAtlasPage
@@ -82,19 +75,19 @@ private enum class MainSection(
         label = "首页",
         title = "开始扫描本机依赖缓存",
         description = "先发现路径，再开始扫描，再查看清理建议。",
-        icon = Icons.Outlined.HomeWork,
+        icon = AppIcons.Home,
     ),
     Results(
         label = "扫描结果",
         title = "扫描结果与清理建议",
         description = "统一查看总览、依赖图谱、清理建议和执行删除。",
-        icon = Icons.Outlined.AutoGraph,
+        icon = AppIcons.Insights,
     ),
     Settings(
         label = "设置",
         title = "路径与清理规则设置",
         description = "管理扫描路径、白名单和清理规则。",
-        icon = Icons.Outlined.Settings,
+        icon = AppIcons.Settings,
     ),
 }
 
@@ -579,7 +572,7 @@ private fun MainHeader(
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                 HeaderActionButton(
-                    icon = if (themeMode == ThemeMode.Obsidian) Icons.Outlined.DarkMode else Icons.Outlined.LightMode,
+                    icon = if (themeMode == ThemeMode.Obsidian) AppIcons.Moon else AppIcons.Sun,
                     label = if (themeMode == ThemeMode.Obsidian) "深色" else "浅色",
                     onClick = {
                         onThemeModeChange(
@@ -588,7 +581,7 @@ private fun MainHeader(
                     },
                 )
                 HeaderActionButton(
-                    icon = Icons.Outlined.Refresh,
+                    icon = AppIcons.Refresh,
                     label = if (isScanning) "扫描中" else "开始扫描",
                     primary = true,
                     enabled = !isScanning,
@@ -677,19 +670,19 @@ private fun HomePage(
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 QuickStartStepCard(
                     index = "01",
-                    icon = Icons.Outlined.HomeWork,
+                    icon = AppIcons.Home,
                     title = "确认路径",
                     description = "应用会自动发现 Maven 本地仓库、Gradle 缓存与 Wrapper 目录。",
                 )
                 QuickStartStepCard(
                     index = "02",
-                    icon = Icons.Outlined.AutoGraph,
+                    icon = AppIcons.Insights,
                     title = "开始扫描",
                     description = "点击一次开始扫描，生成缓存体积、候选项与风险判断。",
                 )
                 QuickStartStepCard(
                     index = "03",
-                    icon = Icons.Outlined.PlayCircleOutline,
+                    icon = AppIcons.PlayCircle,
                     title = "选择后直接删除",
                     description = "进入扫描结果，勾选要处理的项目，再到执行删除页发起真实删除。",
                 )
@@ -724,7 +717,7 @@ private fun HomePage(
             ) {
                 if (snapshot.detectedPaths.isEmpty()) {
                     GuidedEmptyState(
-                        icon = Icons.Outlined.HomeWork,
+                        icon = AppIcons.Home,
                         title = "还没有发现可扫描路径",
                         description = "请先到“设置”里检查默认路径或补充自定义扫描目录，然后再返回首页开始扫描。",
                     )
@@ -769,7 +762,7 @@ private fun HomePage(
                     }
                 } else {
                     GuidedEmptyState(
-                        icon = Icons.Outlined.AutoGraph,
+                        icon = AppIcons.Insights,
                         title = if (isScanning) "正在建立扫描结果" else "还没有生成扫描结果",
                         description = if (snapshot.detectedPaths.any { it.exists }) {
                             "已发现 ${snapshot.detectedPaths.count { it.exists }} 个本地缓存路径。点击“开始扫描”后，应用会执行真实分析。"
@@ -825,7 +818,7 @@ private fun EmptyResultsState(
             subtitle = "请先在首页点击“开始扫描”，完成后再查看结果与清理建议。",
         ) {
         GuidedEmptyState(
-                icon = Icons.Outlined.AutoGraph,
+                icon = AppIcons.Insights,
                 title = "扫描结果页暂时为空",
                 description = "当前还没有执行真实扫描，所以这里不会显示总览、依赖图谱、清理建议和执行删除内容。",
             )
